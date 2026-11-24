@@ -50,7 +50,14 @@ are mutually exclusive. CLI flags override config values.
 | deadline_ms | 300000 | provider run, queue and stream timeouts |
 | max_file_bytes | 1048576 | snapshot file limit |
 | include_tests | false | include tests, fixtures and examples |
-| out | ~/.beam_audit/runs | results outside target repositories |
+| out | $XDG_STATE_HOME/beam_audit/runs | results root; see below |
+
+If `XDG_STATE_HOME` is unset, empty or relative, the default root is
+`~/.local/state/beam_audit/runs`. An explicit `out` takes precedence over
+`BEAM_AUDIT_OUT`, then `config :beam_audit, out: ...`, then that default.
+The root is created only when discovering an audit; listing an absent root
+returns an empty inventory. Use `runs`, `delete` and `prune` to manage saved
+runs. See [Results and recovery](results-and-recovery.md).
 
 Use `--help` for CLI options. No mandatory provider call is needed for discovery,
 reporting, or comparison. The CLI writes progress to stderr and the saved report

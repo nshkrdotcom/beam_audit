@@ -6,7 +6,7 @@ defmodule BeamAudit do
   autonomous repository scanning. Results are kept on disk and can be resumed.
   See the guides for coverage limits and review behavior.
   """
-  alias BeamAudit.Run
+  alias BeamAudit.{Run, RunStorage}
 
   @doc "Discover, review, and report. Returns a run summary, even for partial review."
   def audit(repositories, opts \\ []) do
@@ -26,6 +26,15 @@ defmodule BeamAudit do
 
   @doc "Compare accepted source and dependency findings in two persisted runs."
   def compare(old_run, new_run, opts \\ []), do: Run.compare(old_run, new_run, opts)
+
+  @doc "List saved runs in the selected results root, without regenerating reports."
+  def list_runs(opts \\ []), do: RunStorage.list(opts)
+
+  @doc "Preview deletion of a run ID in the selected root; `confirm: true` removes it."
+  def delete_run(id, opts \\ []), do: RunStorage.delete(id, opts)
+
+  @doc "Preview retention by `older_than` days and/or `keep` newest runs; opt in to deletion."
+  def prune_runs(opts \\ []), do: RunStorage.prune(opts)
 
   @doc "Inspect local prerequisites without executing a target repository or spending tokens."
   def doctor, do: Run.doctor()

@@ -19,6 +19,10 @@ imported decoder candidates, benign context, flow-derived candidates, native
 failure visibility, evidence rejection, recovery and report reproduction.
 Test source/dependency profile behavior and pinned dependency provenance. Mock
 reviewers validate accounting and persistence only, not security judgment.
+Use disposable results roots for all lifecycle tests. Verify root precedence,
+read-only listing, age/count retention, partial protection, explicit deletion,
+unknown/symlink entry refusal, guard contention, release on failure and
+zero-call resume. Do not point destructive QC at real saved runs.
 
 Use the five incident-related historical vulnerable/fixed source pairs from the
 research to check the original security properties. Small faithful source
@@ -70,9 +74,14 @@ These are L1 candidate-discovery controls, not full upstream project scans
 or independently reverified upstream provenance. No L2/L3 security
 judgment or vulnerability detection rate is established by this experiment.
 
-Optional artifact capture selected an existing `dev` build, recording 1033 files and 0 omissions. Dependency status was `partial`. Captured artifact hashes and sizes were checked. The native assessment requests production scope. Artifact capture does not establish build-to-revision correspondence or affected-function reachability accuracy.
+Optional artifact capture selected an existing `dev` build, recording 1033
+files and 0 omissions. Dependency status was `partial`. Captured artifact
+hashes and sizes were checked. The native assessment requests production scope.
+Artifact capture does not establish build-to-revision correspondence or
+affected-function reachability accuracy.
 
-Twenty-eight previously accepted primary review records remained readable.
+During the earlier implementation validation, twenty-eight accepted primary
+review records remained readable.
 The revised review and recovery machinery was exercised with deterministic
 reviewer fixtures, including provider-error pause, budget recovery,
 interruption recovery, challenge disagreement and explicit reconsideration.

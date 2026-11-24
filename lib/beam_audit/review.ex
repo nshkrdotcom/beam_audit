@@ -130,13 +130,9 @@ defmodule BeamAudit.Review do
         decision["severity"] in ~w(critical high)
 
     safe = decision["disposition"] in ~w(verified_safe not_applicable)
-    # The old policy is retained for old runs so existing accepted challenges
-    # and pending decisions do not change meaning on upgrade.
+
     high_risk =
-      if group["policy"] == 2,
-        do:
-          group["risk"] == "high" or Enum.any?(group["tools"], &(&1 in ~w(reach owner_boundary))),
-        else: group["rule"] in ~w(P01 P02 P03 P04 P05 P06 P07)
+      group["risk"] == "high" or Enum.any?(group["tools"], &(&1 in ~w(reach owner_boundary)))
 
     high_impact or (safe and high_risk)
   end

@@ -668,7 +668,6 @@ defmodule BeamAudit.Discovery do
               do: "medium",
               else: rule["risk"] || "medium"
             ),
-          "policy" => 2,
           "definition" => defn,
           "first" => first["first"],
           "last" => first["last"],

@@ -80,9 +80,7 @@ defmodule BeamAudit.Report do
     dependency_findings = Findings.dependencies(repo, dependency_data)
 
     dependency_gap =
-      if dependency_data["status"] in ~w(failed partial) or
-           (manifest["schema"] == 2 and dependency_data["status"] == "not_captured" and
-              manifest["settings"]["profile"] != "source"), do: 1, else: 0
+      if dependency_data["status"] in ~w(failed partial not_captured), do: 1, else: 0
 
     dependency_text = dependency_section(dependency_data, dependency_findings)
 
@@ -318,7 +316,7 @@ defmodule BeamAudit.Report do
       "### Dependency security\n\n",
       "Status: #{clean(data["status"])}. #{clean(data["reason"])}\n\n",
       if(data["status"] == "not_captured",
-        do: "Dependency assessment was not captured in this run.\n\n",
+        do: "Dependency stage did not record a result.\n\n",
         else: ""
       ),
       Enum.map(data["projects"], fn project ->

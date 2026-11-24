@@ -81,7 +81,7 @@ defmodule BeamAudit.MixProject do
       ],
       groups_for_modules: [
         "Public API": [BeamAudit],
-        Execution: [BeamAudit.Run, BeamAudit.Scope],
+        Execution: [BeamAudit.Run, BeamAudit.RunStorage, BeamAudit.Scope],
         Analysis: [BeamAudit.Discovery, BeamAudit.Evidence, BeamAudit.Dependencies],
         Review: [BeamAudit.Review, BeamAudit.Report, BeamAudit.Findings]
       ]

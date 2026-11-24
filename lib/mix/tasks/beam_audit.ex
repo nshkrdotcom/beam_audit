@@ -10,10 +10,14 @@ defmodule Mix.Tasks.BeamAudit do
       mix beam_audit ~/projects/weld --discover-only
       mix beam_audit resume RUN_ID
       mix beam_audit report RUN_ID
+      mix beam_audit runs
+      mix beam_audit delete RUN_ID --yes
+      mix beam_audit prune --older-than 30 --keep 5
       mix beam_audit doctor
 
-  Run directories default to `~/.beam_audit/runs`. See `--help` for options.
-  No target compilation, environment variables, or separate scanner installation.
+  Run directories default to `$XDG_STATE_HOME/beam_audit/runs` (or
+  `~/.local/state/beam_audit/runs`). See `--help` for options.
+  No target compilation, required environment variables, or separate scanner installation.
   """
 
   @switches [
@@ -34,7 +38,11 @@ defmodule Mix.Tasks.BeamAudit do
     max_calls: :integer,
     evidence_rounds: :integer,
     deadline_ms: :integer,
-    max_file_bytes: :integer
+    max_file_bytes: :integer,
+    older_than: :integer,
+    keep: :integer,
+    include_partial: :boolean,
+    yes: :boolean
   ]
   @config_keys ~w(provider model out include_tests jobs batch_size max_calls evidence_rounds deadline_ms max_file_bytes profile compiled offline)a
 
@@ -50,6 +58,9 @@ defmodule Mix.Tasks.BeamAudit do
              mix beam_audit resume RUN_ID [options]
              mix beam_audit report RUN_ID [--out DIRECTORY]
              mix beam_audit compare OLD_RUN NEW_RUN [--out DIRECTORY]
+             mix beam_audit runs [--out DIRECTORY]
+             mix beam_audit delete RUN_ID [--out DIRECTORY] [--yes]
+             mix beam_audit prune [--out DIRECTORY] [--older-than DAYS] [--keep N] [--include-partial] [--yes]
              mix beam_audit doctor
 
       --discover-only  Skip agentic review (source and dependency analysis)
@@ -67,10 +78,18 @@ defmodule Mix.Tasks.BeamAudit do
       --evidence-rounds N  Extra evidence rounds (default 2)
       --deadline-ms N  ASM run deadline (default 300000)
       --max-file-bytes N  Source file limit (default 1048576)
-      --out DIRECTORY  Results root (default ~/.beam_audit/runs)
+      --out DIRECTORY  Results root (overrides BEAM_AUDIT_OUT and application config)
+      --older-than DAYS  Prune runs created more than DAYS ago (positive integer)
+      --keep N         Preserve N newest recognized runs in prune (nonnegative integer)
+      --include-partial  Allow prune to select partial or unreported runs
+      --yes            Apply delete/prune; otherwise preview only
       --config FILE    JSON repository list and optional settings
       """)
     else
+      if Enum.any?(Keyword.keys(opts), &(&1 in [:older_than, :keep, :include_partial, :yes])) and
+           List.first(args) not in ["delete", "prune"],
+         do: Mix.raise("Retention options require delete or prune")
+
       Mix.Task.run("app.start")
       dispatch(args, Keyword.put(opts, :on_progress, &progress/1))
     end
@@ -86,6 +105,24 @@ defmodule Mix.Tasks.BeamAudit do
       {:error, reason} -> Mix.raise(reason)
     end
   end
+
+  defp dispatch(["runs"], opts) do
+    lifecycle_options!(opts, [:out])
+    lifecycle(BeamAudit.list_runs(opts))
+  end
+
+  defp dispatch(["delete", id], opts) do
+    lifecycle_options!(opts, [:out, :yes])
+    lifecycle(BeamAudit.delete_run(id, Keyword.put(opts, :confirm, opts[:yes] == true)))
+  end
+
+  defp dispatch(["prune"], opts) do
+    lifecycle_options!(opts, [:out, :older_than, :keep, :include_partial, :yes])
+    lifecycle(BeamAudit.prune_runs(Keyword.put(opts, :confirm, opts[:yes] == true)))
+  end
+
+  defp dispatch([command | _], _) when command in ["runs", "delete", "prune"],
+    do: Mix.raise("Invalid lifecycle command arguments; see --help")
 
   defp dispatch(args, opts) do
     {repositories, opts} = config(args, opts)
@@ -109,6 +146,20 @@ defmodule Mix.Tasks.BeamAudit do
     else
       finish(BeamAudit.audit(repositories, opts), false)
     end
+  end
+
+  defp lifecycle_options!(opts, allowed) do
+    unknown = Keyword.keys(opts) -- [:help, :on_progress | allowed]
+    if unknown != [], do: Mix.raise("Invalid lifecycle options: #{inspect(unknown)}")
+  end
+
+  defp lifecycle({:error, reason}), do: Mix.raise(reason)
+
+  defp lifecycle({:ok, result}) do
+    Mix.shell().info(JSON.encode!(result))
+
+    if Map.get(result, :errors, []) != [],
+      do: Mix.raise("Some selected runs could not be deleted; inspect the result")
   end
 
   defp config(args, opts) do

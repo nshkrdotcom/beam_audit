@@ -27,6 +27,8 @@ are not OS-level containment. No artificial qualification mechanism is used.
 
 Reports, prompts, provider output and snapshots may contain confidential code.
 Use only authorized providers and repositories. Deleting a local run does not
-control provider retention. Source and native analyzer output are untrusted model
+control provider retention. The results root is configurable; explicit deletion
+and pruning remove whole local runs. Do not perform direct filesystem cleanup
+of active runs. Source and native analyzer output are untrusted model
 input. Mechanical evidence validation does not prove semantic correctness.
 BeamAudit makes no source changes. Remediation is a separate owner-approved task.

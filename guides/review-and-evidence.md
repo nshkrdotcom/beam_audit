@@ -23,8 +23,8 @@ set, run scanners, edit source, or establish accounting status.
 
 Mechanical validation checks IDs, citations and decision fields. It cannot
 prove security reasoning. High-impact findings and consequential safe or
-non-applicable dismissals get a challenge under the new policy; old runs keep
-their original challenge policy. Material disagreement remains unresolved.
+non-applicable dismissals get a challenge. Material disagreement remains
+unresolved.
 
 Supported evidence requests: `read_source` (bounded path/line range),
 `find_symbol` (literal fallback), `find_definition`, `find_references`,

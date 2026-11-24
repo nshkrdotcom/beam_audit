@@ -49,6 +49,26 @@ budget; increase it deliberately. Independent processes do not share a quota.
 Use `--compiled` only when existing build artifacts are wanted as additional
 reachability evidence. No target build is performed.
 
+## Saved runs and cleanup
+
+Runs are stored under `$XDG_STATE_HOME/beam_audit/runs`, defaulting to
+`~/.local/state/beam_audit/runs`. Override the root with `--out`, the optional
+`BEAM_AUDIT_OUT` environment variable, or application configuration.
+
+```sh
+mix beam_audit runs
+mix beam_audit delete RUN_ID          # preview
+mix beam_audit delete RUN_ID --yes    # remove that run
+mix beam_audit prune --older-than 30 --keep 5 --include-partial
+mix beam_audit prune --older-than 30 --keep 5 --include-partial --yes
+```
+
+Prune combines age and count criteria. Partial/unreported runs are protected
+unless `--include-partial` is explicit. Preview first; `--yes` permanently
+removes the selected run records. Active runs and unrecognized entries are
+never selected for removal. No automatic deletion or background service.
+See [Results and recovery](guides/results-and-recovery.md) for details.
+
 ## Analysis
 
 | Component | Responsibility |
