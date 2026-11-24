@@ -10,13 +10,17 @@ Live review is blocked. ASM 0.17.6 and CLI Subprocess Core 0.10.1 support Codex
 completion-only and structured output. The generated Codex invocation uses a
 read-only sandbox, and its core profile lacks a host-read allowlist and a shell
 tool prohibition. Antigravity lacks equivalent completion-only and structured
-output support. The local check built a synthetic Codex invocation without
-launching a provider. `resume` records the blocker and renders the stored run.
+output support on the checked profile. The local check built a synthetic Codex
+core invocation without launching a provider. Other execution surfaces and
+live containment remain unverified. While the qualification list is empty,
+`resume` records the blocker and renders the stored run.
 
-Qualifying a future ASM provider requires binding verified containment to its
-invocation. The intended contract uses `ASM.query/3`, structured output, a finite
-deadline and the cumulative call budget. The options and qualification listed
-in `priv/asm_boundary.json` cannot enable live review by themselves.
+The review code calls `ASM.query/3` after the provider gate passes. It requests
+structured output and a finite deadline and uses the cumulative call budget.
+Before adding a qualification entry to `priv/asm_boundary.json`, bind verified
+containment to the invocation and verify the exact provider stack. The current
+gate matches provider and ASM version and is insufficient on its own to
+establish containment.
 
 ## Adjudication input and output
 

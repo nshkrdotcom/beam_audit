@@ -1,4 +1,4 @@
 {
   "qualified": [],
-  "reason": "ASM 0.17.6 with CLI Subprocess Core 0.10.1 configures Codex completion-only with a read-only sandbox and no approvals. The core profile supplies neither a host-read allowlist nor a shell-tool prohibition. Antigravity lacks an equivalent completion-only and structured-output contract."
+  "reason": "No provider invocation has been qualified for host-read containment and tool restrictions. The offline check covered the Codex core profile. Other ASM execution surfaces and live containment remain unverified."
 }

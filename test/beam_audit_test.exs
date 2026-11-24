@@ -156,6 +156,10 @@ defmodule BeamAuditTest do
     original = File.read!(summary.report)
     assert {:ok, _} = BeamAudit.report(run)
     assert File.read!(summary.report) == original
+
+    assert {:ok, %{review_status: "provider_blocked", pending: pending}} = BeamAudit.resume(run)
+    assert pending == summary.pending
+    assert Run.call_count(run) == 0
   end
 
   test "malformed umbrella source and unsupported Erlang remain visible", ctx do
