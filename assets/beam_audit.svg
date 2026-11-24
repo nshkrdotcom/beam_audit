@@ -1,5 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="230.94" viewBox="0 0 200 230.94" role="img" aria-label="Faceted BEAM security audit emblem">
+<svg xmlns="http://www.w3.org/2000/svg" filter="url(#gray50)" width="200" height="230.94" viewBox="0 0 200 230.94" role="img" aria-label="Faceted BEAM security audit emblem">
   <defs>
+    <filter id="gray50" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0.50"/></filter>
     <path id="hex" d="M100 0 200 57.735V173.205L100 230.94 0 173.205V57.735Z"/>
     <clipPath id="frame"><use href="#hex"/></clipPath>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
