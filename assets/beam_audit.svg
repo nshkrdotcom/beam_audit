@@ -1,423 +1,325 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="200" height="230.94" viewBox="0 0 200 230.94" role="img" aria-label="Art Deco lighthouse searchlight exposing hidden code structure and anomalies inside dark monoliths">
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="230.94" viewBox="0 0 200 230.94" role="img" aria-labelledby="logo-title logo-description">
+  <title id="logo-title">BeamAudit</title>
+  <desc id="logo-description">An Art Deco lighthouse casts a searchlight across dark monoliths, revealing hidden code paths and a highlighted anomaly.</desc>
   <defs>
-    
-    <filter id="gray50">
-      <feColorMatrix type="saturate" values="0.50" />
+    <!-- 75% grayscale: 25% original saturation, applied to the entire badge. -->
+    <filter id="gray25" x="0" y="0" width="200" height="230.94" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feColorMatrix type="saturate" values="0.25"/>
     </filter>
     <filter id="glow-tight" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur stdDeviation="2.2" result="b" />
-      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+      <feGaussianBlur stdDeviation="1.7" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
     <filter id="glow-wide" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="5.5" result="b" />
-      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+      <feGaussianBlur stdDeviation="4.6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
     </filter>
-
-    <path id="hex" d="M100 0 200 57.735V173.205L100 230.94 0 173.205V57.735Z" />
-    <clipPath id="hex-clip"><use href="#hex" /></clipPath>
-
-    
-    <path id="beam-shape" d="M62 66 200 54V174L62 78Z" />
-    <clipPath id="beam-clip"><use href="#beam-shape" /></clipPath>
-
-    
+    <path id="hex" d="M100 0 200 57.735V173.205L100 230.94 0 173.205V57.735Z"/>
+    <clipPath id="hex-clip">
+      <use href="#hex"/>
+    </clipPath>
+    <path id="beam-shape" d="M62 66 200 54V174L62 78Z"/>
+    <clipPath id="beam-clip">
+      <use href="#beam-shape"/>
+    </clipPath>
     <linearGradient id="sky" x1=".2" y1="0" x2=".8" y2="1">
-      <stop offset="0" stop-color="#3a0ca3" />
-      <stop offset=".35" stop-color="#1b1448" />
-      <stop offset=".72" stop-color="#0d1b3e" />
-      <stop offset="1" stop-color="#072a36" />
+      <stop offset="0" stop-color="#3a0ca3"/>
+      <stop offset=".35" stop-color="#1b1448"/>
+      <stop offset=".72" stop-color="#0d1b3e"/>
+      <stop offset="1" stop-color="#072a36"/>
     </linearGradient>
-
     <radialGradient id="lantern-halo" cx="62" cy="72" r="78" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff4b8" stop-opacity=".95" />
-      <stop offset=".16" stop-color="#ffb703" stop-opacity=".52" />
-      <stop offset=".42" stop-color="#fb5607" stop-opacity=".18" />
-      <stop offset="1" stop-color="#3a0ca3" stop-opacity="0" />
+      <stop offset="0" stop-color="#fff4b8" stop-opacity=".95"/>
+      <stop offset=".16" stop-color="#ffb703" stop-opacity=".46"/>
+      <stop offset=".42" stop-color="#fb5607" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#3a0ca3" stop-opacity="0"/>
     </radialGradient>
-
     <linearGradient id="beam-vol" x1="62" y1="72" x2="200" y2="114" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fffbe0" stop-opacity=".86" />
-      <stop offset=".26" stop-color="#ffd166" stop-opacity=".46" />
-      <stop offset=".68" stop-color="#00f5d4" stop-opacity=".22" />
-      <stop offset="1" stop-color="#00bbf9" stop-opacity=".06" />
+      <stop offset="0" stop-color="#fffbe0" stop-opacity=".86"/>
+      <stop offset=".26" stop-color="#ffd166" stop-opacity=".46"/>
+      <stop offset=".68" stop-color="#00f5d4" stop-opacity=".20"/>
+      <stop offset="1" stop-color="#00bbf9" stop-opacity=".06"/>
     </linearGradient>
-
     <linearGradient id="beam-core" x1="62" y1="72" x2="200" y2="114" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity=".92" />
-      <stop offset=".32" stop-color="#ffe169" stop-opacity=".42" />
-      <stop offset=".75" stop-color="#00f5d4" stop-opacity=".14" />
-      <stop offset="1" stop-color="#00f5d4" stop-opacity="0" />
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".92"/>
+      <stop offset=".32" stop-color="#ffe169" stop-opacity=".42"/>
+      <stop offset=".75" stop-color="#00f5d4" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#00f5d4" stop-opacity="0"/>
     </linearGradient>
-
     <linearGradient id="beam-back" x1="62" y1="72" x2="0" y2="72" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffdd75" stop-opacity=".55" />
-      <stop offset=".55" stop-color="#ff7b00" stop-opacity=".16" />
-      <stop offset="1" stop-color="#7209b7" stop-opacity="0" />
+      <stop offset="0" stop-color="#ffdd75" stop-opacity=".55"/>
+      <stop offset=".55" stop-color="#ff7b00" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#7209b7" stop-opacity="0"/>
     </linearGradient>
-
     <linearGradient id="tower-lit" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#2c1654" />
-      <stop offset=".42" stop-color="#5a189a" />
-      <stop offset=".66" stop-color="#c96838" />
-      <stop offset=".88" stop-color="#ffb703" />
-      <stop offset="1" stop-color="#fff0b3" />
+      <stop offset="0" stop-color="#2c1654"/>
+      <stop offset=".42" stop-color="#5a189a"/>
+      <stop offset=".66" stop-color="#c96838"/>
+      <stop offset=".88" stop-color="#ffb703"/>
+      <stop offset="1" stop-color="#fff0b3"/>
     </linearGradient>
-
     <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#fff2b2" />
-      <stop offset=".35" stop-color="#ff9f1c" />
-      <stop offset=".75" stop-color="#b5441c" />
-      <stop offset="1" stop-color="#481633" />
+      <stop offset="0" stop-color="#fff2b2"/>
+      <stop offset=".35" stop-color="#ff9f1c"/>
+      <stop offset=".75" stop-color="#b5441c"/>
+      <stop offset="1" stop-color="#481633"/>
     </linearGradient>
-
     <linearGradient id="elixir-drop" x1=".25" y1="0" x2=".85" y2="1">
-      <stop offset="0" stop-color="#ffd6ff" />
-      <stop offset=".28" stop-color="#c77dff" />
-      <stop offset=".65" stop-color="#7b2cbf" />
-      <stop offset="1" stop-color="#240046" />
+      <stop offset="0" stop-color="#ffd6ff"/>
+      <stop offset=".28" stop-color="#c77dff"/>
+      <stop offset=".65" stop-color="#7b2cbf"/>
+      <stop offset="1" stop-color="#240046"/>
     </linearGradient>
-
     <linearGradient id="crag-lit" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff9e00" />
-      <stop offset=".35" stop-color="#6b2d5c" />
-      <stop offset="1" stop-color="#14112e" />
+      <stop offset="0" stop-color="#ff9e00"/>
+      <stop offset=".35" stop-color="#6b2d5c"/>
+      <stop offset="1" stop-color="#14112e"/>
     </linearGradient>
-
     <linearGradient id="crag-dark" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2b194d" />
-      <stop offset=".55" stop-color="#131230" />
-      <stop offset="1" stop-color="#070a1c" />
+      <stop offset="0" stop-color="#2b194d"/>
+      <stop offset=".55" stop-color="#131230"/>
+      <stop offset="1" stop-color="#070a1c"/>
     </linearGradient>
-
     <linearGradient id="mono-dark-l" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2e236c" />
-      <stop offset=".55" stop-color="#17153b" />
-      <stop offset="1" stop-color="#0a0e24" />
+      <stop offset="0" stop-color="#2e236c"/>
+      <stop offset=".55" stop-color="#17153b"/>
+      <stop offset="1" stop-color="#0a0e24"/>
     </linearGradient>
-
     <linearGradient id="mono-dark-r" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#161438" />
-      <stop offset="1" stop-color="#060817" />
+      <stop offset="0" stop-color="#161438"/>
+      <stop offset="1" stop-color="#060817"/>
     </linearGradient>
-
     <linearGradient id="xray-glass-l" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#00f5d4" stop-opacity=".46" />
-      <stop offset=".5" stop-color="#0096c7" stop-opacity=".36" />
-      <stop offset="1" stop-color="#1d3557" stop-opacity=".55" />
+      <stop offset="0" stop-color="#00f5d4" stop-opacity=".46"/>
+      <stop offset=".5" stop-color="#0096c7" stop-opacity=".36"/>
+      <stop offset="1" stop-color="#1d3557" stop-opacity=".55"/>
     </linearGradient>
-
     <linearGradient id="xray-glass-r" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#0077b6" stop-opacity=".38" />
-      <stop offset="1" stop-color="#0a1638" stop-opacity=".72" />
+      <stop offset="0" stop-color="#0077b6" stop-opacity=".38"/>
+      <stop offset="1" stop-color="#0a1638" stop-opacity=".72"/>
     </linearGradient>
-
     <linearGradient id="taint-flow" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#00f5d4" />
-      <stop offset=".48" stop-color="#ffd166" />
-      <stop offset="1" stop-color="#ff0040" />
+      <stop offset="0" stop-color="#00f5d4"/>
+      <stop offset=".48" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff0040"/>
     </linearGradient>
-
     <radialGradient id="fault-glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#ffffff" />
-      <stop offset=".28" stop-color="#ffbe0b" />
-      <stop offset=".62" stop-color="#ff0044" stop-opacity=".9" />
-      <stop offset="1" stop-color="#ff0044" stop-opacity="0" />
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset=".28" stop-color="#ffbe0b"/>
+      <stop offset=".62" stop-color="#ff0044" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#ff0044" stop-opacity="0"/>
     </radialGradient>
-
     <linearGradient id="sea-back" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#007f8c" />
-      <stop offset=".5" stop-color="#12355b" />
-      <stop offset="1" stop-color="#1b1448" />
+      <stop offset="0" stop-color="#007f8c"/>
+      <stop offset=".5" stop-color="#12355b"/>
+      <stop offset="1" stop-color="#1b1448"/>
     </linearGradient>
-
     <linearGradient id="sea-mid" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#092d4a" />
-      <stop offset=".5" stop-color="#1d1852" />
-      <stop offset="1" stop-color="#0a3d4d" />
+      <stop offset="0" stop-color="#092d4a"/>
+      <stop offset=".5" stop-color="#1d1852"/>
+      <stop offset="1" stop-color="#0a3d4d"/>
     </linearGradient>
-
     <linearGradient id="sea-front" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#160f38" />
-      <stop offset=".55" stop-color="#0b1d36" />
-      <stop offset="1" stop-color="#052a33" />
+      <stop offset="0" stop-color="#160f38"/>
+      <stop offset=".55" stop-color="#0b1d36"/>
+      <stop offset="1" stop-color="#052a33"/>
     </linearGradient>
-
     <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#fff0b8" />
-      <stop offset=".28" stop-color="#f77f00" />
-      <stop offset=".52" stop-color="#00f5d4" />
-      <stop offset=".78" stop-color="#7209b7" />
-      <stop offset="1" stop-color="#ffbe0b" />
+      <stop offset="0" stop-color="#fff0b8"/>
+      <stop offset=".28" stop-color="#f77f00"/>
+      <stop offset=".52" stop-color="#00f5d4"/>
+      <stop offset=".78" stop-color="#7209b7"/>
+      <stop offset="1" stop-color="#ffbe0b"/>
     </linearGradient>
-
     <pattern id="xray-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(30)">
-      <line x1="0" y1="0" x2="0" y2="6" stroke="#72efdd" stroke-width=".45" opacity=".32" />
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#72efdd" stroke-width=".4" opacity=".24"/>
     </pattern>
-
-    
     <g id="monolith-silhouettes">
-      <polygon points="108,190 108,118 120,104 132,114 132,190" />
-      <polygon points="130,196 130,86 150,61 170,82 170,196" />
-      <polygon points="168,188 168,100 183,86 198,97 198,188" />
+      <polygon points="108,190 108,118 120,104 132,114 132,190"/>
+      <polygon points="130,196 130,86 150,61 170,82 170,196"/>
+      <polygon points="168,188 168,100 183,86 198,97 198,188"/>
     </g>
   </defs>
-
-  <g clip-path="url(#hex-clip)" filter="url(#gray50)">
-    
-    <use href="#hex" fill="url(#sky)" />
-
-    
-    <g fill="none" stroke="#9d4edd" stroke-opacity=".22">
-      <circle cx="62" cy="72" r="46" stroke-width=".7" />
-      <circle cx="62" cy="72" r="76" stroke-width=".6" stroke-dasharray="3 4" />
-      <circle cx="62" cy="72" r="112" stroke-width=".55" stroke-dasharray="1.5 5" />
-    </g>
-
-    
-    <g fill="#2b175c" opacity=".55">
-      <path d="M0 54H34C40 54 42 48 48 48H86C91 48 94 42 100 42H128V50H108C103 50 101 55 96 55H0Z" />
-      <path d="M124 30H164V36H142C136 36 134 41 128 41H104V35H118C121 35 122 30 124 30Z" />
-    </g>
-    <path d="M8 53H35M96 42H126M126 30H160" stroke="#c77dff" stroke-width=".7" opacity=".45" />
-
-    
-    <g fill="none" stroke-linecap="round">
-      <path d="M98 16 Q114 24 126 32 T154 44" stroke="#ffd166" stroke-width=".75" opacity=".68" />
-      <path d="M112 24 Q126 18 142 26" stroke="#72efdd" stroke-width=".65" opacity=".58" />
-      <path d="M126 32 Q134 42 146 47" stroke="#c77dff" stroke-width=".65" opacity=".55" />
-      
-      <polygon points="98,13 99.6,16 98,19 96.4,16" fill="#fff3b0" />
-      <polygon points="112,21.5 113.5,24 112,26.5 110.5,24" fill="#72efdd" />
-      <polygon points="126,29 128,32 126,35 124,32" fill="#ffd166" />
-      <polygon points="142,23.5 143.5,26 142,28.5 140.5,26" fill="#e0aaff" />
-      <polygon points="154,41.5 155.8,44 154,46.5 152.2,44" fill="#fff3b0" />
-      <circle cx="86" cy="24" r="1.1" fill="#ffd6ff" opacity=".8" />
-      <circle cx="32" cy="40" r="1.2" fill="#fff3b0" opacity=".75" />
-      <circle cx="20" cy="68" r="1" fill="#72efdd" opacity=".65" />
-      <circle cx="174" cy="46" r="1.1" fill="#72efdd" opacity=".7" />
-    </g>
-
-    
-    <rect width="200" height="231" fill="url(#lantern-halo)" />
-
-    
-    <g>
-      
-      <polygon points="108,190 108,118 120,104 120,190" fill="url(#mono-dark-l)" />
-      <polygon points="120,104 132,114 132,190 120,190" fill="url(#mono-dark-r)" />
-      <path d="M108 118 120 104 132 114M120 104V186" fill="none" stroke="#5e548e" stroke-width=".7" opacity=".55" />
-
-      
-      <polygon points="130,196 130,86 150,61 150,196" fill="url(#mono-dark-l)" />
-      <polygon points="150,61 170,82 170,196 150,196" fill="url(#mono-dark-r)" />
-      
-      <polygon points="130,110 150,96 150,102 130,116" fill="#0c0d26" opacity=".6" />
-      <polygon points="150,96 170,110 170,116 150,102" fill="#050614" opacity=".6" />
-      <path d="M130 86 150 61 170 82M150 61V190" fill="none" stroke="#7b2cbf" stroke-width=".85" opacity=".6" />
-
-      
-      <polygon points="168,188 168,100 183,86 183,188" fill="url(#mono-dark-l)" />
-      <polygon points="183,86 198,97 198,188 183,188" fill="url(#mono-dark-r)" />
-      <path d="M168 100 183 86 198 97M183 86V184" fill="none" stroke="#4ea8de" stroke-width=".7" opacity=".45" />
-    </g>
-
-    
-    
-    <polygon points="62,68 0,56 0,88 62,76" fill="url(#beam-back)" />
-    
-    <use href="#beam-shape" fill="url(#beam-vol)" />
-    <polygon points="62,69 200,82 200,146 62,75" fill="url(#beam-core)" />
-    
-    <line x1="62" y1="66" x2="200" y2="54" stroke="#fff3b0" stroke-width=".9" opacity=".75" />
-    <line x1="62" y1="78" x2="200" y2="174" stroke="#72efdd" stroke-width=".85" opacity=".55" />
-    <line x1="62" y1="71" x2="200" y2="96" stroke="#ffffff" stroke-width=".55" opacity=".38" />
-    <line x1="62" y1="73" x2="200" y2="132" stroke="#ffd166" stroke-width=".55" opacity=".32" />
-
-    
-    <g clip-path="url(#beam-clip)">
-      
-      <polygon points="108,190 108,118 120,104 120,190" fill="url(#xray-glass-l)" />
-      <polygon points="120,104 132,114 132,190 120,190" fill="url(#xray-glass-r)" />
-      <polygon points="130,196 130,86 150,61 150,196" fill="url(#xray-glass-l)" />
-      <polygon points="150,61 170,82 170,196 150,196" fill="url(#xray-glass-r)" />
-      <polygon points="168,188 168,100 183,86 183,188" fill="url(#xray-glass-l)" />
-      <polygon points="183,86 198,97 198,188 183,188" fill="url(#xray-glass-r)" />
-
-      
-      <use href="#monolith-silhouettes" fill="url(#xray-hatch)" />
-
-      
-      <g fill="none" stroke="#80ffdb" stroke-width=".95" opacity=".88">
-        <path d="M108 175V118L120 104 132 114V175M120 104V175" />
-        <path d="M130 180V86L150 61 170 82V180M150 61V180" />
-        <path d="M168 180V100L183 86 198 97V180M183 86V180" />
+  <g clip-path="url(#hex-clip)">
+    <g filter="url(#gray25)">
+      <use href="#hex" fill="url(#sky)"/>
+      <g fill="none" stroke="#9d4edd" stroke-opacity=".22">
+        <circle cx="62" cy="72" r="46" stroke-width=".7"/>
+        <circle cx="62" cy="72" r="76" stroke-width=".6" stroke-dasharray="3 4"/>
+        <circle cx="62" cy="72" r="112" stroke-width=".55" stroke-dasharray="1.5 5"/>
       </g>
-
-      
-      <g fill="none" stroke="#72efdd" stroke-width=".85" stroke-linecap="round" stroke-linejoin="round" opacity=".85">
-        
-        <path d="M114 152V126L120 119 126 126V144M120 119V158M114 139H126" />
-        
-        <path d="M174 152V112L183 102 192 112V148M183 102V162M174 128H192M177 142H189" />
+      <g fill="#2b175c" opacity=".55">
+        <path d="M0 54H34C40 54 42 48 48 48H86C91 48 94 42 100 42H128V50H108C103 50 101 55 96 55H0Z"/>
+        <path d="M124 30H164V36H142C136 36 134 41 128 41H104V35H118C121 35 122 30 124 30Z"/>
       </g>
-      <g fill="#e0fff9">
-        <circle cx="120" cy="119" r="1.5" />
-        <circle cx="114" cy="139" r="1.3" />
-        <circle cx="126" cy="126" r="1.3" />
-        <circle cx="183" cy="102" r="1.6" />
-        <circle cx="174" cy="128" r="1.3" />
-        <circle cx="192" cy="112" r="1.3" />
+      <path d="M8 53H35M96 42H126M126 30H160" stroke="#c77dff" stroke-width=".7" opacity=".45"/>
+      <g fill="none" stroke-linecap="round">
+        <path d="M98 16 Q114 24 126 32 T154 44" stroke="#ffd166" stroke-width=".75" opacity=".68"/>
+        <path d="M112 24 Q126 18 142 26" stroke="#72efdd" stroke-width=".65" opacity=".58"/>
+        <path d="M126 32 Q134 42 146 47" stroke="#c77dff" stroke-width=".65" opacity=".55"/>
+        <polygon points="98,13 99.6,16 98,19 96.4,16" fill="#fff3b0"/>
+        <polygon points="112,21.5 113.5,24 112,26.5 110.5,24" fill="#72efdd"/>
+        <polygon points="126,29 128,32 126,35 124,32" fill="#ffd166"/>
+        <polygon points="142,23.5 143.5,26 142,28.5 140.5,26" fill="#e0aaff"/>
+        <polygon points="154,41.5 155.8,44 154,46.5 152.2,44" fill="#fff3b0"/>
+        <circle cx="86" cy="24" r="1.1" fill="#ffd6ff" opacity=".8"/>
+        <circle cx="32" cy="40" r="1.2" fill="#fff3b0" opacity=".75"/>
+        <circle cx="20" cy="68" r="1" fill="#72efdd" opacity=".65"/>
+        <circle cx="174" cy="46" r="1.1" fill="#72efdd" opacity=".7"/>
       </g>
-
-      
-      <g fill="none" stroke="#48bfe3" stroke-width=".9" opacity=".78">
-        <circle cx="136" cy="158" r="7.5" />
-        <circle cx="147" cy="161" r="6.5" stroke="#ffd166" />
-        <circle cx="160" cy="157" r="8" stroke="#72efdd" />
-        <circle cx="173" cy="161" r="6" />
-      </g>
-
-      
-      <path d="M113 128 C122 135 129 135 137 125 S144 114 150 118" fill="none" stroke="url(#taint-flow)" stroke-width="2.1" stroke-linecap="round" filter="url(#glow-tight)" />
-      <path d="M137 125 C144 134 154 142 166 138 T183 128" fill="none" stroke="#ffd166" stroke-width="1" stroke-dasharray="2.4 2.2" opacity=".88" />
-      
-      <circle cx="113" cy="128" r="2.6" fill="#0b2538" stroke="#00f5d4" stroke-width="1.2" />
-      <circle cx="137" cy="125" r="2.4" fill="#211838" stroke="#ffd166" stroke-width="1.1" />
-      <circle cx="166" cy="138" r="2" fill="#182238" stroke="#72efdd" stroke-width="1" />
-
-      
-      <circle cx="150" cy="118" r="18" fill="url(#fault-glow)" filter="url(#glow-wide)" opacity=".92" />
-      
-      <g fill="none" stroke="#ff5c77" stroke-width="1.05" stroke-linecap="round">
-        <path d="M150 118 140 105 136 96" />
-        <path d="M150 118 161 107 166 101" />
-        <path d="M150 118 159 131 165 136" />
-        <path d="M150 118 142 132 138 141" />
-      </g>
-      
-      <g fill="none" stroke="#fff3b0" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M139 111V107H143" />
-        <path d="M157 107H161V111" />
-        <path d="M139 125V129H143" />
-        <path d="M157 129H161V125" />
-      </g>
-      
-      <polygon points="150,111 156,118 150,125 144,118" fill="#ff0044" stroke="#fff3b0" stroke-width="1.1" />
-      <polygon points="150,114.2 152.8,118 150,121.8 147.2,118" fill="#ffffff" />
-    </g>
-
-    
-    
-    <g>
-      <polygon points="0,152 30,156 44,172 22,194 0,180" fill="url(#crag-dark)" />
-      <polygon points="30,156 54,166 44,186 22,194" fill="#231942" />
-      <polygon points="54,166 86,169 104,186 78,200 44,186" fill="url(#crag-lit)" />
-      <polygon points="86,169 104,186 92,198 78,200" fill="#171233" />
-      
-      <path d="M0 152 30 156 54 166 86 169 104 186" fill="none" stroke="#ffb703" stroke-width="1.15" opacity=".78" />
-      <path d="M30 156 44 186M54 166 78 200" fill="none" stroke="#9d4edd" stroke-width=".75" opacity=".5" />
-    </g>
-
-    
-    <g>
-      <polygon points="50,91 74,91 85,172 39,172" fill="url(#tower-lit)" />
-      
-      <polygon points="50,91 56,91 50,172 39,172" fill="#170c33" opacity=".52" />
-      
-      <polygon points="70,91 74,91 85,172 78,172" fill="#ffe599" opacity=".48" />
-
-      
-      <g stroke="#240046" stroke-width=".75" opacity=".65">
-        <line x1="56" y1="91" x2="50" y2="172" />
-        <line x1="62" y1="91" x2="62" y2="172" />
-        <line x1="68" y1="91" x2="74" y2="172" />
-      </g>
-      <g stroke="#ffe8a3" stroke-width=".6" opacity=".55">
-        <line x1="69" y1="91" x2="75" y2="172" />
-        <line x1="63" y1="91" x2="63" y2="172" />
-      </g>
-
-      
-      <path d="M47 115H77L78 120H46Z" fill="url(#copper)" stroke="#240046" stroke-width=".5" />
-      <path d="M43.5 143H80.5L81.5 148H42.5Z" fill="url(#copper)" stroke="#240046" stroke-width=".5" />
-      <path d="M38 168H86L87 173H37Z" fill="url(#copper)" stroke="#1b0d33" stroke-width=".6" />
-
-      
+      <rect width="200" height="231" fill="url(#lantern-halo)"/>
       <g>
-        <rect x="59.8" y="100" width="4.4" height="11" rx="2" fill="#170a2e" />
-        <rect x="60.8" y="101.2" width="2.4" height="8.6" rx="1.1" fill="#ffd166" filter="url(#glow-tight)" />
-
-        <rect x="59.4" y="125" width="5.2" height="13" rx="2.2" fill="#170a2e" />
-        <rect x="60.6" y="126.4" width="2.8" height="10.2" rx="1.2" fill="#ff9f1c" />
-
-        <rect x="59" y="152" width="6" height="14" rx="2.5" fill="#170a2e" />
-        <rect x="60.4" y="153.5" width="3.2" height="11.5" rx="1.4" fill="#00f5d4" />
+        <polygon points="108,190 108,118 120,104 120,190" fill="url(#mono-dark-l)"/>
+        <polygon points="120,104 132,114 132,190 120,190" fill="url(#mono-dark-r)"/>
+        <path d="M108 118 120 104 132 114M120 104V186" fill="none" stroke="#5e548e" stroke-width=".7" opacity=".55"/>
+        <polygon points="130,196 130,86 150,61 150,196" fill="url(#mono-dark-l)"/>
+        <polygon points="150,61 170,82 170,196 150,196" fill="url(#mono-dark-r)"/>
+        <polygon points="130,110 150,96 150,102 130,116" fill="#0c0d26" opacity=".6"/>
+        <polygon points="150,96 170,110 170,116 150,102" fill="#050614" opacity=".6"/>
+        <path d="M130 86 150 61 170 82M150 61V190" fill="none" stroke="#7b2cbf" stroke-width=".85" opacity=".6"/>
+        <polygon points="168,188 168,100 183,86 183,188" fill="url(#mono-dark-l)"/>
+        <polygon points="183,86 198,97 198,188 183,188" fill="url(#mono-dark-r)"/>
+        <path d="M168 100 183 86 198 97M183 86V184" fill="none" stroke="#4ea8de" stroke-width=".7" opacity=".45"/>
       </g>
-
-      
-      <polygon points="44,86 80,86 76,92 48,92" fill="url(#copper)" stroke="#1c0d36" stroke-width=".7" />
-      <rect x="46" y="82.5" width="32" height="3.8" rx="1" fill="#3a1666" stroke="#ffd166" stroke-width=".65" />
-      
-      <path d="M50 82.5V86M56 82.5V86M62 82.5V86M68 82.5V86M74 82.5V86" stroke="#fff0b8" stroke-width=".65" />
-
-      
-      <rect x="51" y="60" width="22" height="22.5" fill="#1f1147" stroke="url(#copper)" stroke-width="1.2" />
-      
-      <circle cx="62" cy="72" r="10.5" fill="#ffb703" opacity=".55" filter="url(#glow-wide)" />
-      <ellipse cx="62" cy="72" rx="8.5" ry="9.5" fill="#ffe169" opacity=".88" />
-      <ellipse cx="62" cy="72" rx="5.2" ry="7" fill="#ffffff" filter="url(#glow-tight)" />
-      
-      <g fill="none" stroke="#ff6b00" stroke-width=".65" opacity=".7">
-        <path d="M53 66H71M53 72H71M53 78H71" />
+      <polygon points="62,68 0,56 0,88 62,76" fill="url(#beam-back)"/>
+      <use href="#beam-shape" fill="url(#beam-vol)"/>
+      <polygon points="62,69 200,82 200,146 62,75" fill="url(#beam-core)"/>
+      <line x1="62" y1="66" x2="200" y2="54" stroke="#fff3b0" stroke-width=".8" opacity=".78"/>
+      <line x1="62" y1="78" x2="200" y2="174" stroke="#72efdd" stroke-width=".75" opacity=".62"/>
+      <line x1="62" y1="71" x2="200" y2="96" stroke="#ffffff" stroke-width=".48" opacity=".30"/>
+      <line x1="62" y1="73" x2="200" y2="132" stroke="#ffd166" stroke-width=".48" opacity=".25"/>
+      <g clip-path="url(#beam-clip)">
+        <polygon points="108,190 108,118 120,104 120,190" fill="url(#xray-glass-l)"/>
+        <polygon points="120,104 132,114 132,190 120,190" fill="url(#xray-glass-r)"/>
+        <polygon points="130,196 130,86 150,61 150,196" fill="url(#xray-glass-l)"/>
+        <polygon points="150,61 170,82 170,196 150,196" fill="url(#xray-glass-r)"/>
+        <polygon points="168,188 168,100 183,86 183,188" fill="url(#xray-glass-l)"/>
+        <polygon points="183,86 198,97 198,188 183,188" fill="url(#xray-glass-r)"/>
+        <use href="#monolith-silhouettes" fill="url(#xray-hatch)"/>
+        <g fill="none" stroke="#80ffdb" stroke-width=".95" opacity=".88">
+          <path d="M108 175V118L120 104 132 114V175M120 104V175"/>
+          <path d="M130 180V86L150 61 170 82V180M150 61V180"/>
+          <path d="M168 180V100L183 86 198 97V180M183 86V180"/>
+        </g>
+        <g fill="none" stroke="#72efdd" stroke-width=".85" stroke-linecap="round" stroke-linejoin="round" opacity=".85">
+          <path d="M114 152V126L120 119 126 126V144M120 119V158M114 139H126"/>
+          <path d="M174 152V112L183 102 192 112V148M183 102V162M174 128H192M177 142H189"/>
+        </g>
+        <g fill="#e0fff9">
+          <circle cx="120" cy="119" r="1.5"/>
+          <circle cx="114" cy="139" r="1.3"/>
+          <circle cx="126" cy="126" r="1.3"/>
+          <circle cx="183" cy="102" r="1.6"/>
+          <circle cx="174" cy="128" r="1.3"/>
+          <circle cx="192" cy="112" r="1.3"/>
+        </g>
+        <g fill="none" stroke="#48bfe3" stroke-width=".9" opacity=".78">
+          <circle cx="136" cy="158" r="7.5"/>
+          <circle cx="147" cy="161" r="6.5" stroke="#ffd166"/>
+          <circle cx="160" cy="157" r="8" stroke="#72efdd"/>
+          <circle cx="173" cy="161" r="6"/>
+        </g>
+        <path d="M113 128 C122 135 129 135 137 125 S144 114 150 118" fill="none" stroke="url(#taint-flow)" stroke-width="2.1" stroke-linecap="round" filter="url(#glow-tight)"/>
+        <path d="M137 125 C144 134 154 142 166 138 T183 128" fill="none" stroke="#ffd166" stroke-width="1" stroke-dasharray="2.4 2.2" opacity=".88"/>
+        <circle cx="113" cy="128" r="2.6" fill="#0b2538" stroke="#00f5d4" stroke-width="1.2"/>
+        <circle cx="137" cy="125" r="2.4" fill="#211838" stroke="#ffd166" stroke-width="1.1"/>
+        <circle cx="166" cy="138" r="2" fill="#182238" stroke="#72efdd" stroke-width="1"/>
+        <circle cx="150" cy="118" r="16.5" fill="url(#fault-glow)" filter="url(#glow-wide)" opacity=".87"/>
+        <g fill="none" stroke="#ff5c77" stroke-width=".85" stroke-linecap="round">
+          <path d="M150 118 140 105 136 96"/>
+          <path d="M150 118 161 107 166 101"/>
+          <path d="M150 118 159 131 165 136"/>
+          <path d="M150 118 142 132 138 141"/>
+        </g>
+        <g fill="none" stroke="#fff3b0" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M139 111V107H143"/>
+          <path d="M157 107H161V111"/>
+          <path d="M139 125V129H143"/>
+          <path d="M157 129H161V125"/>
+        </g>
+        <polygon points="150,111 156,118 150,125 144,118" fill="#ff0044" stroke="#fff3b0" stroke-width="1.1"/>
+        <polygon points="150,114.2 152.8,118 150,121.8 147.2,118" fill="#ffffff"/>
       </g>
-      
-      <path d="M56.5 60V82.5M67.5 60V82.5" stroke="#3c1559" stroke-width="1.1" />
-      <path d="M57 60V82.5M68 60V82.5" stroke="#fff3c4" stroke-width=".45" opacity=".75" />
-
-      
-      <polygon points="48,60 76,60 71,55 53,55" fill="url(#copper)" stroke="#1f0d3b" stroke-width=".7" />
-      <path d="M62 31 C62 31 70.5 43.5 70.5 49.5 A8.5 8.5 0 1 1 53.5 49.5 C53.5 43.5 62 31 62 31Z" fill="url(#elixir-drop)" stroke="#ffd6ff" stroke-width=".9" />
-      
-      <path d="M62 33.5 C62 33.5 67.5 43.5 67.5 49 A5.5 5.5 0 0 1 62 54.5Z" fill="#ff9f1c" opacity=".32" />
-      <path d="M60.5 37.5 C58 42.5 56.5 46.5 57.5 50.5" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" opacity=".8" />
-      <circle cx="62" cy="29.2" r="1.4" fill="#fff3b0" filter="url(#glow-tight)" />
+      <g>
+        <polygon points="0,152 30,156 44,172 22,194 0,180" fill="url(#crag-dark)"/>
+        <polygon points="30,156 54,166 44,186 22,194" fill="#231942"/>
+        <polygon points="54,166 86,169 104,186 78,200 44,186" fill="url(#crag-lit)"/>
+        <polygon points="86,169 104,186 92,198 78,200" fill="#171233"/>
+        <path d="M0 152 30 156 54 166 86 169 104 186" fill="none" stroke="#ffb703" stroke-width="1.15" opacity=".78"/>
+        <path d="M30 156 44 186M54 166 78 200" fill="none" stroke="#9d4edd" stroke-width=".75" opacity=".5"/>
+      </g>
+      <g>
+        <polygon points="50,91 74,91 85,172 39,172" fill="url(#tower-lit)"/>
+        <polygon points="50,91 56,91 50,172 39,172" fill="#170c33" opacity=".52"/>
+        <polygon points="70,91 74,91 85,172 78,172" fill="#ffe599" opacity=".48"/>
+        <g stroke="#240046" stroke-width=".75" opacity=".65">
+          <line x1="56" y1="91" x2="50" y2="172"/>
+          <line x1="62" y1="91" x2="62" y2="172"/>
+          <line x1="68" y1="91" x2="74" y2="172"/>
+        </g>
+        <g stroke="#ffe8a3" stroke-width=".6" opacity=".55">
+          <line x1="69" y1="91" x2="75" y2="172"/>
+          <line x1="63" y1="91" x2="63" y2="172"/>
+        </g>
+        <path d="M47 115H77L78 120H46Z" fill="url(#copper)" stroke="#240046" stroke-width=".5"/>
+        <path d="M43.5 143H80.5L81.5 148H42.5Z" fill="url(#copper)" stroke="#240046" stroke-width=".5"/>
+        <path d="M38 168H86L87 173H37Z" fill="url(#copper)" stroke="#1b0d33" stroke-width=".6"/>
+        <g>
+          <rect x="59.8" y="100" width="4.4" height="11" rx="2" fill="#170a2e"/>
+          <rect x="60.8" y="101.2" width="2.4" height="8.6" rx="1.1" fill="#ffd166" filter="url(#glow-tight)"/>
+          <rect x="59.4" y="125" width="5.2" height="13" rx="2.2" fill="#170a2e"/>
+          <rect x="60.6" y="126.4" width="2.8" height="10.2" rx="1.2" fill="#ff9f1c"/>
+          <rect x="59" y="152" width="6" height="14" rx="2.5" fill="#170a2e"/>
+          <rect x="60.4" y="153.5" width="3.2" height="11.5" rx="1.4" fill="#00f5d4"/>
+        </g>
+        <polygon points="44,86 80,86 76,92 48,92" fill="url(#copper)" stroke="#1c0d36" stroke-width=".7"/>
+        <rect x="46" y="82.5" width="32" height="3.8" rx="1" fill="#3a1666" stroke="#ffd166" stroke-width=".65"/>
+        <path d="M50 82.5V86M56 82.5V86M62 82.5V86M68 82.5V86M74 82.5V86" stroke="#fff0b8" stroke-width=".65"/>
+        <rect x="51" y="60" width="22" height="22.5" fill="#1f1147" stroke="url(#copper)" stroke-width="1.2"/>
+        <circle cx="62" cy="72" r="10.5" fill="#ffb703" opacity=".55" filter="url(#glow-wide)"/>
+        <ellipse cx="62" cy="72" rx="8.5" ry="9.5" fill="#ffe169" opacity=".88"/>
+        <ellipse cx="62" cy="72" rx="5.2" ry="7" fill="#ffffff" filter="url(#glow-tight)"/>
+        <g fill="none" stroke="#ff6b00" stroke-width=".65" opacity=".7">
+          <path d="M53 66H71M53 72H71M53 78H71"/>
+        </g>
+        <path d="M56.5 60V82.5M67.5 60V82.5" stroke="#3c1559" stroke-width="1.1"/>
+        <path d="M57 60V82.5M68 60V82.5" stroke="#fff3c4" stroke-width=".45" opacity=".75"/>
+        <polygon points="48,60 76,60 71,55 53,55" fill="url(#copper)" stroke="#1f0d3b" stroke-width=".7"/>
+        <path d="M62 31 C62 31 70.5 43.5 70.5 49.5 A8.5 8.5 0 1 1 53.5 49.5 C53.5 43.5 62 31 62 31Z" fill="url(#elixir-drop)" stroke="#ffd6ff" stroke-width=".9"/>
+        <path d="M62 33.5 C62 33.5 67.5 43.5 67.5 49 A5.5 5.5 0 0 1 62 54.5Z" fill="#ff9f1c" opacity=".32"/>
+        <path d="M60.5 37.5 C58 42.5 56.5 46.5 57.5 50.5" fill="none" stroke="#ffffff" stroke-width="1.1" stroke-linecap="round" opacity=".8"/>
+        <circle cx="62" cy="29.2" r="1.4" fill="#fff3b0" filter="url(#glow-tight)"/>
+      </g>
+      <g>
+        <path d="M0 176 Q26 168 54 176 T112 174 T166 177 T200 171 V231 H0Z" fill="url(#sea-back)"/>
+        <path d="M0 176 Q26 168 54 176 T112 174 T166 177 T200 171" fill="none" stroke="#48bfe3" stroke-width="1" opacity=".75"/>
+        <path d="M0 190 Q34 180 68 192 T138 188 T200 186 V231 H0Z" fill="url(#sea-mid)"/>
+        <path d="M0 190 Q34 180 68 192 T138 188 T200 186" fill="none" stroke="#00f5d4" stroke-width="1.15" opacity=".7"/>
+        <g fill="none" stroke="#72efdd" stroke-width=".65" opacity=".35">
+          <path d="M16 196 Q38 190 60 198"/>
+          <path d="M84 198 Q112 191 140 198"/>
+          <path d="M148 196 Q172 191 194 196"/>
+        </g>
+        <path d="M0 206 Q42 196 86 208 T168 204 T200 202 V231 H0Z" fill="url(#sea-front)"/>
+        <path d="M0 206 Q42 196 86 208 T168 204 T200 202" fill="none" stroke="#ffb703" stroke-width="1" opacity=".62"/>
+        <g stroke-linecap="round">
+          <path d="M120 179H142M151 179H174" stroke="#ffd166" stroke-width="1.2" opacity=".74"/>
+          <path d="M112 185H132M141 185H168" stroke="#80ffdb" stroke-width="1.05" opacity=".65"/>
+          <path d="M119 193H157" stroke="#ffb703" stroke-width="1.25" opacity=".68"/>
+          <path d="M108 201H132M140 201H156" stroke="#00f5d4" stroke-width="1.05" opacity=".57"/>
+          <path d="M112 211H142" stroke="#ffd166" stroke-width="1.15" opacity=".55"/>
+          <path d="M106 219H125" stroke="#72efdd" stroke-width=".95" opacity=".40"/>
+        </g>
+      </g>
+      <use href="#hex" fill="none" stroke="#080717" stroke-width="8.2" stroke-linejoin="round"/>
+      <use href="#hex" fill="none" stroke="url(#rim)" stroke-width="3.8" stroke-linejoin="round"/>
+      <path d="M100 2.944 197.450 59.207V171.733L100 227.996 2.550 171.733V59.207Z" fill="none" stroke="#fff6d6" stroke-width=".5" stroke-opacity=".42" stroke-linejoin="round"/>
     </g>
-
-    
-    <g>
-      
-      <path d="M0 176 Q26 168 54 176 T112 174 T166 177 T200 171 V231 H0Z" fill="url(#sea-back)" />
-      <path d="M0 176 Q26 168 54 176 T112 174 T166 177 T200 171" fill="none" stroke="#48bfe3" stroke-width="1" opacity=".75" />
-
-      
-      <path d="M0 190 Q34 180 68 192 T138 188 T200 186 V231 H0Z" fill="url(#sea-mid)" />
-      <path d="M0 190 Q34 180 68 192 T138 188 T200 186" fill="none" stroke="#00f5d4" stroke-width="1.15" opacity=".7" />
-
-      
-      <g fill="none" stroke="#72efdd" stroke-width=".65" opacity=".35">
-        <path d="M16 196 Q38 190 60 198" />
-        <path d="M84 198 Q112 191 140 198" />
-        <path d="M148 196 Q172 191 194 196" />
-      </g>
-
-      
-      <path d="M0 206 Q42 196 86 208 T168 204 T200 202 V231 H0Z" fill="url(#sea-front)" />
-      <path d="M0 206 Q42 196 86 208 T168 204 T200 202" fill="none" stroke="#ffb703" stroke-width="1" opacity=".62" />
-
-      
-      <g stroke-linecap="round">
-        <path d="M114 179H142M152 179H176" stroke="#ffd166" stroke-width="1.35" opacity=".82" />
-        <path d="M104 185H128M136 185H168" stroke="#80ffdb" stroke-width="1.2" opacity=".72" />
-        <path d="M118 193H158" stroke="#ffb703" stroke-width="1.5" opacity=".76" />
-        <path d="M98 201H130M138 201H160" stroke="#00f5d4" stroke-width="1.2" opacity=".62" />
-        <path d="M110 211H146" stroke="#ffd166" stroke-width="1.4" opacity=".65" />
-        <path d="M90 219H122" stroke="#72efdd" stroke-width="1.1" opacity=".48" />
-      </g>
-    </g>
-
-    
-    <use href="#hex" fill="none" stroke="#080717" stroke-width="8.5" />
-    <use href="#hex" fill="none" stroke="url(#rim)" stroke-width="3.6" />
-    <path d="M100 2.4 197.9 58.9V172L100 228.5 2.1 172V58.9Z" fill="none" stroke="#fff6d6" stroke-width=".65" stroke-opacity=".55" />
   </g>
 </svg>
