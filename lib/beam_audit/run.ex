@@ -193,7 +193,7 @@ defmodule BeamAudit.Run do
             raise File.Error, reason: reason, action: "invalidate summary", path: run
         end
 
-        if opts[:reconsider] and call_count(run) < config["max_calls"] do
+        if opts[:reconsider] == true and call_count(run) < config["max_calls"] do
           Enum.each(manifest["repositories"], fn repo ->
             if ready?(run, repo), do: Review.reconsider(run, repo["id"])
           end)
