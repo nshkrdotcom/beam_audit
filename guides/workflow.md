@@ -11,15 +11,14 @@ flowchart TD
     C & D & E --> F[Account and group every raw hit]
     F --> G[Reach source flow analysis]
     G --> H[Freeze ledger and evidence]
-    H --> I{Provider boundary qualified?}
-    I -->|No| R[Report pending work and blocker]
-    I -->|Yes| J[Bounded parallel review batches]
+    H -->|Discover only| R[Report pending work]
+    H -->|Review| J[Bounded ASM review batches]
     J --> K[Validate IDs and evidence]
     K -->|Accepted| L[Persist individual decisions]
     K -->|Evidence request| M[Validate and retrieve within scope]
     M -->|Within budget| J
     M -->|Rejected or exhausted| N[Unresolved]
-    K -->|Invalid response or exhausted call budget| P[Pending]
+    K -->|Provider failure, invalid response or exhausted call budget| P[Pending]
     L --> O[Challenge consequential decisions]
     O --> Q[Reconcile and report]
     N & P --> Q

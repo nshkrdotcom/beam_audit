@@ -32,8 +32,7 @@ defmodule BeamAudit.Run do
       "elixir_executable" => System.find_executable("elixir"),
       "codex" => System.find_executable("codex"),
       "antigravity" => System.find_executable("agy"),
-      "libraries" => Store.versions(),
-      "provider_boundary" => Store.read(Store.priv("asm_boundary.json"))
+      "libraries" => Store.versions()
     }
   end
 
@@ -152,31 +151,21 @@ defmodule BeamAudit.Run do
       counter = :atomics.new(1, signed: false)
       :atomics.put(counter, 1, call_count(run))
 
-      case Review.provider_check(config["provider"]) do
-        :ok ->
-          Store.write(Path.join(run, "review_status.json"), %{
-            "status" => "reviewing",
-            "settings" => config
-          })
+      Store.write(Path.join(run, "review_status.json"), %{
+        "status" => "reviewing",
+        "settings" => config
+      })
 
-          Enum.each(manifest["repositories"], fn repo ->
-            if ready?(run, repo) do
-              Review.execute(run, repo["id"], config, counter)
-            end
-          end)
+      Enum.each(manifest["repositories"], fn repo ->
+        if ready?(run, repo) do
+          Review.execute(run, repo["id"], config, counter)
+        end
+      end)
 
-          Store.write(Path.join(run, "review_status.json"), %{
-            "status" => "review_pass_finished",
-            "settings" => config
-          })
-
-        {:error, reason} ->
-          Store.write(Path.join(run, "review_status.json"), %{
-            "status" => "provider_blocked",
-            "reason" => reason,
-            "settings" => config
-          })
-      end
+      Store.write(Path.join(run, "review_status.json"), %{
+        "status" => "review_pass_finished",
+        "settings" => config
+      })
 
       Report.render(run)
     end)

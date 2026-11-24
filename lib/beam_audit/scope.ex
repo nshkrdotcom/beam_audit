@@ -15,7 +15,8 @@ defmodule BeamAudit.Scope do
 
   @doc false
   def git(root, args) do
-    System.cmd("git", ["-C", root | args], stderr_to_stdout: true)
+    executable = System.find_executable("git") || raise("Git executable unavailable")
+    System.cmd(executable, ["-C", root | args], stderr_to_stdout: true)
   end
 
   defp git!(root, args) do

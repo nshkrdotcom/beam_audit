@@ -50,7 +50,7 @@ defmodule Mix.Tasks.BeamAudit do
       --discover-only  Skip agentic review
       --rev REF        Pin a single positional repository (default HEAD)
       --include-tests  Include tests/examples in selected source
-      --provider NAME  codex (default) or antigravity; capability-gated
+      --provider NAME  codex (default) or antigravity
       --model NAME     Optional ASM model override
       --jobs N         Review concurrency (default 4)
       --batch-size N   Candidate groups per call (default 6)

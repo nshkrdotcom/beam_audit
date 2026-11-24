@@ -34,12 +34,10 @@ Analyzer resource limits and source modeling are not guaranteed for hostile code
 
 Source ranges are accepted only from the recorded inventory, checked against
 snapshot bytes, and sent as evidence packets. Agent output cannot add a target,
-execute a requested command or register a new tool. Provider execution uses an
-empty working directory and ASM completion-only and structured-output intent.
-The default qualification list is intentionally empty until a provider-side
-read boundary is verified. A read-only sandbox does not by itself prevent reads
-of adjacent repositories or secrets. ASM's actual boundary must be established
-in Phase 2; do not remove the gate or downgrade to normal coding-agent mode.
+execute a requested command or register a new tool. ASM manages
+provider execution with native permissions. The empty working directory and
+BeamAudit's evidence policy are application-level controls. They provide no
+OS-level isolation.
 
 ## Data handling
 

@@ -59,7 +59,7 @@ recorded per call; it cannot change the repository scope or rule policy.
 Discovery failures require a fresh discovery run after diagnosing the tool or
 scope failure; resume is for review, not rebuilding a partially captured tree.
 A single coordinating writer is supported per run. Do not edit ledgers,
-qualification records, decisions or hashes to make a run look complete.
+decisions or hashes to make a run look complete.
 
 ```sh
 mix beam_audit report RUN_ID

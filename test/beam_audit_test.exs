@@ -156,10 +156,6 @@ defmodule BeamAuditTest do
     original = File.read!(summary.report)
     assert {:ok, _} = BeamAudit.report(run)
     assert File.read!(summary.report) == original
-
-    assert {:ok, %{review_status: "provider_blocked", pending: pending}} = BeamAudit.resume(run)
-    assert pending == summary.pending
-    assert Run.call_count(run) == 0
   end
 
   test "malformed umbrella source and unsupported Erlang remain visible", ctx do
@@ -358,12 +354,6 @@ defmodule BeamAuditTest do
     record = put_in(record, ["decision", "evidence_refs"], ["invented"])
     Store.write(accepted, record)
     assert {:error, _} = BeamAudit.report(run)
-  end
-
-  test "unqualified providers fail closed" do
-    assert {:error, _} = Review.provider_check("codex")
-    assert {:error, _} = Review.provider_check("antigravity")
-    assert {:error, _} = Review.provider_check("arbitrary")
   end
 
   defp disposition(packet) do

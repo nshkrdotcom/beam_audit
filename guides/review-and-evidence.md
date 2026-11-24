@@ -6,21 +6,11 @@ identity, coverage accounting and report rendering do not use a model.
 
 ## Provider contract
 
-Live review is blocked. ASM 0.17.6 and CLI Subprocess Core 0.10.1 support Codex
-completion-only and structured output. The generated Codex invocation uses a
-read-only sandbox, and its core profile lacks a host-read allowlist and a shell
-tool prohibition. Antigravity lacks equivalent completion-only and structured
-output support on the checked profile. The local check built a synthetic Codex
-core invocation without launching a provider. Other execution surfaces and
-live containment remain unverified. While the qualification list is empty,
-`resume` records the blocker and renders the stored run.
-
-The review code calls `ASM.query/3` after the provider gate passes. It requests
-structured output and a finite deadline and uses the cumulative call budget.
-Before adding a qualification entry to `priv/asm_boundary.json`, bind verified
-containment to the invocation and verify the exact provider stack. The current
-gate matches provider and ASM version and is insufficient on its own to
-establish containment.
+BeamAudit calls `ASM.query/3` with a finite run deadline and a cumulative
+call budget. Codex is the default and uses native structured output in
+completion-only mode. Antigravity uses its native permissions and returns
+JSON text, which BeamAudit decodes and validates locally. Model selection
+uses the provider default unless you pass an explicit model.
 
 ## Adjudication input and output
 

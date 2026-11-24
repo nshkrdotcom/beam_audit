@@ -12,8 +12,7 @@ mix beam_audit /path/to/repository --discover-only
 
 This is the source-only command and needs no provider login. The ordinary
 `mix beam_audit /path/to/repository` command also reviews evidence through ASM
-when the provider is qualified. The initial build's qualification gate is closed;
-inspect `mix beam_audit doctor` and the Phase 2 handoff before live review.
+with an authenticated provider. Use `mix beam_audit doctor` to inspect local prerequisites.
 
 Pass multiple repository roots as positional arguments. HEAD is resolved once
 per repository. To pin one historical revision use `--rev SHA`.
@@ -51,7 +50,7 @@ and `--config` are mutually exclusive. `--rev` applies to one positional root.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `provider` | `codex` | ASM provider; Antigravity is selectable but capability-gated |
+| `provider` | `codex` | ASM provider; select Antigravity as an alternative |
 | `model` | ASM default | Explicit model override only if requested |
 | `jobs` | 4 | Maximum concurrent review batches; discovery uses at most 2 repository workers |
 | `batch_size` | 6 | Maximum groups in a review call; large packets split further |

@@ -18,7 +18,7 @@ repositories = [
 ```
 
 `BeamAudit.audit/2` combines both phases. `BeamAudit.doctor/0` returns local
-prerequisite and qualification information. Options are ordinary Elixir keyword
+prerequisite information. Options are ordinary Elixir keyword
 lists, with string repository map keys and provider/model values. The Mix task
 calls this API, not an external service.
 

@@ -10,23 +10,6 @@ defmodule BeamAudit.Review do
   @max_prompt_bytes 240_000
 
   @doc false
-  def provider_check(provider) when provider in ["codex", "antigravity"] do
-    contract = Store.read(Store.priv("asm_boundary.json"))
-    version = Store.versions()["agent_session_manager"]
-
-    if Enum.any?(
-         contract["qualified"],
-         &(&1["provider"] == provider and &1["asm_version"] == version)
-       ) do
-      :ok
-    else
-      {:error, "ASM boundary not qualified for #{provider}/#{version}: " <> contract["reason"]}
-    end
-  end
-
-  def provider_check(_), do: {:error, "Provider must be codex or antigravity"}
-
-  @doc false
   def schema do
     str = %{"type" => "string"}
     int = %{"type" => "integer"}
@@ -435,10 +418,6 @@ defmodule BeamAudit.Review do
         "reason" => reason
       })
 
-  # The versioned qualification gate in provider_check/1 is deliberately
-  # fail-closed in this initial source delivery. A read-only CLI is not a
-  # filesystem read allowlist. Phase 2 must establish the real ASM boundary,
-  # wire it here and qualify the exact supported provider/version pair.
   defp asm_query(prompt, output_schema, settings, run) do
     provider =
       case settings["provider"] do
@@ -454,12 +433,24 @@ defmodule BeamAudit.Review do
       opts = [
         lane: :core,
         cwd: workspace,
-        completion_only: true,
-        output_schema: output_schema,
+        stream_timeout_ms: settings["deadline_ms"],
+        queue_timeout_ms: settings["deadline_ms"],
         run_deadline_ms: settings["deadline_ms"]
       ]
 
-      opts = if provider == :codex, do: Keyword.put(opts, :skip_git_repo_check, true), else: opts
+      {prompt, opts} =
+        case provider do
+          :codex ->
+            {prompt,
+             [completion_only: true, output_schema: output_schema, skip_git_repo_check: true] ++
+               opts}
+
+          :antigravity ->
+            {prompt <>
+               "\nReturn a single JSON object with no Markdown or commentary. Schema: " <>
+               JSON.encode!(output_schema), opts}
+        end
+
       opts = if settings["model"], do: Keyword.put(opts, :model, settings["model"]), else: opts
 
       case ASM.query(provider, prompt, opts) do
@@ -475,10 +466,20 @@ defmodule BeamAudit.Review do
             "lane" => value(metadata, :lane),
             "input_tokens" => value(cost, :input_tokens),
             "output_tokens" => value(cost, :output_tokens),
-            "cost_usd" => value(cost, :cost_usd)
+            "cost_usd" => value(cost, :cost_usd),
+            "duration_ms" => result.duration_ms
           }
 
-          {:ok, Map.get(result, :object), observed}
+          case provider do
+            :codex ->
+              {:ok, result.object, observed}
+
+            :antigravity ->
+              case JSON.decode(result.text || "") do
+                {:ok, object} -> {:ok, object, observed}
+                {:error, _} -> {:error, "Antigravity returned invalid JSON"}
+              end
+          end
 
         {:error, error} ->
           {:error, Exception.message(error)}

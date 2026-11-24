@@ -22,17 +22,11 @@ that no target code executes, including target `mix.exs` and macros.
 Reach analyzes the pinned Elixir inputs. Erlang inputs remain visible in
 coverage because the upstream Erlang preprocessor can follow external includes.
 
-## Provider gate
+## Provider verification
 
-Qualify the exact ASM/provider version using its supported containment and
-completion interface. On a harmless synthetic workspace, establish that a
-reviewer cannot read a neighboring repository, invoke arbitrary tools or write
-source, not just that it promises not to. Verify strict structured output,
-finite deadlines and actual evidence-reference validation. Codex completion-only
-as documented is read-only; it does not prove read containment. If ASM cannot
-provide the needed boundary, stop that integration and retain the deterministic
-pipeline. No fallback to a raw CLI, extra agent SDK, general agent framework or
-new sandbox infrastructure. Antigravity requires its own qualified equivalent.
+On an existing run, use an authenticated ASM provider to review one batch.
+Check that the responses are validated against the frozen evidence and that
+accepted decisions survive report regeneration and resume.
 
 ## Operational evaluation
 

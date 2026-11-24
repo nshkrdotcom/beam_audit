@@ -4,7 +4,7 @@ defmodule BeamAudit do
 
   Discovery is source-only. Review is a bounded evidence-based workflow, not
   autonomous repository scanning. Results are kept on disk and can be resumed.
-  See the guides for coverage limits and the provider qualification gate.
+  See the guides for coverage limits and review behavior.
   """
   alias BeamAudit.Run
 

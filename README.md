@@ -16,8 +16,7 @@ BeamAudit is a library and a Mix task. It is not a new static analysis engine,
 dependency scanner, agent framework, or application runtime. It does not modify
 or compile the audited repositories.
 
-> Unreleased. Discovery and reporting work independently of review. Live review
-> is blocked until ASM can enforce read containment and restrict tool access.
+> Unreleased. Discovery and reporting work independently of review.
 
 ## Getting started
 
@@ -34,14 +33,14 @@ mix deps.get
 mix beam_audit ~/projects/weld --discover-only
 ```
 
-After provider qualification:
+With an authenticated provider:
 
 ```sh
 mix beam_audit ~/projects/weld ~/projects/codex_sdk ~/projects/gemini_ex
 ```
 
 The command pins HEAD of each selected repository, snapshots the authorized
-tracked source, runs deterministic checks, and (when qualified) reviews pending
+tracked source, runs deterministic checks, and reviews pending
 candidate groups through ASM. It prints the run ID and report location.
 Results default to `~/.beam_audit/runs/`; `--out` selects another results root
 outside the targets.
