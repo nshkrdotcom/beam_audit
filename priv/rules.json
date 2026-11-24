@@ -1,0 +1,150 @@
+{
+  "version": "incident-family-v1",
+  "rules": [
+    {
+      "id": "P01",
+      "title": "External term representation",
+      "invariant": "External input must not reconstruct unvalidated internal terms. Authentication and decoder options are not structural validation.",
+      "grep": "binary_to_term|non_executable_binary_to_term|decode_(cursor|keyset)|Ash\\.Page\\.Keyset",
+      "patterns": [
+        "binary_to_term(...)",
+        "_.binary_to_term(...)",
+        "non_executable_binary_to_term(...)",
+        "_.non_executable_binary_to_term(...)",
+        "_.decode_cursor(...)",
+        "_.decode_keyset(...)"
+      ],
+      "bucket": "candidate",
+      "provenance": [
+        "https://cna.erlef.org/cves/CVE-2026-129514.html",
+        "https://cna.erlef.org/cves/CVE-2026-130411.html",
+        "https://security.erlef.org/secure_coding_and_deployment_hardening/serialisation.html"
+      ]
+    },
+    {
+      "id": "P02",
+      "title": "Reconstructed type and struct identity",
+      "invariant": "A struct tag, struct match or cast success does not prove field invariants. Trace construction and validation of all attacker-controlled fields.",
+      "grep": "__struct__|\\bstruct!?[[:space:]]*\\(|\\bis_struct[[:space:]]*\\(|\\bdefp?[[:space:]]+cast\\b|Ash\\.Type|Ecto\\.(ParameterizedType|Type)",
+      "patterns": [
+        "struct(...)",
+        "struct!(...)",
+        "_.struct(...)",
+        "_.struct!(...)",
+        "is_struct(...)",
+        "%{__struct__: _}",
+        "Map.put(_, :__struct__, _)"
+      ],
+      "bucket": "candidate",
+      "provenance": [
+        "https://cna.erlef.org/cves/CVE-2026-67579.html",
+        "https://cna.erlef.org/cves/CVE-2026-124283.html"
+      ]
+    },
+    {
+      "id": "P03",
+      "title": "Recursive validation",
+      "invariant": "Validate nested values and keys, list elements and tails, tuples and struct fields before any sensitive use, including failure paths. Never infer completeness from validator names.",
+      "grep": "",
+      "patterns": [],
+      "bucket": "derived",
+      "provenance": [
+        "https://cna.erlef.org/cves/CVE-2026-67579.html",
+        "https://cna.erlef.org/cves/CVE-2026-124283.html"
+      ]
+    },
+    {
+      "id": "P04",
+      "title": "Implicit dispatch and rejection paths",
+      "invariant": "Unvalidated values must not select protocol behavior; rejection and logging can themselves invoke protocols. Inventory implementations and trace representation boundaries to consumers.",
+      "grep": "\\bdefimpl\\b|Inspect\\.inspect|Enumerable\\.reduce|String\\.Chars\\.to_string|Jason\\.Encoder\\.encode",
+      "patterns": [
+        "defimpl _ do ... end",
+        "Inspect.inspect(...)",
+        "Enumerable.reduce(...)",
+        "String.Chars.to_string(...)",
+        "Jason.Encoder.encode(...)"
+      ],
+      "bucket": "candidate",
+      "provenance": [
+        "https://cna.erlef.org/cves/CVE-2026-129514.html"
+      ]
+    },
+    {
+      "id": "P05",
+      "title": "Executable authority",
+      "invariant": "Only trusted code/configuration may choose executable modules, functions, callbacks, commands or evaluated source. Trace where the authority-bearing value originates.",
+      "grep": "\\bapply[[:space:]]*\\(|\\bapply/[23]\\b|Code\\.(eval_|compile_|require_file|load_file)|System\\.(cmd|shell)|:os\\.cmd|Port\\.open|:erlang\\.apply|\\bmfa\\b",
+      "patterns": [
+        "apply(...)",
+        "_.apply(...)",
+        "Code.eval_string(...)",
+        "Code.eval_quoted(...)",
+        "Code.eval_file(...)",
+        "Code.compile_string(...)",
+        "Code.compile_quoted(...)",
+        "Code.compile_file(...)",
+        "Code.require_file(...)",
+        "System.cmd(...)",
+        "System.shell(...)",
+        ":os.cmd(...)",
+        "Port.open(...)"
+      ],
+      "bucket": "candidate",
+      "provenance": [
+        "https://cna.erlef.org/cves/CVE-2026-133555.html"
+      ]
+    },
+    {
+      "id": "P06",
+      "title": "Interpreted query or DSL data",
+      "invariant": "External data must remain literal values, not query expressions or DSL instructions. Trace parsing, casting, parameter binding and fragment construction.",
+      "grep": "\\b(unsafe_fragment|fragment)[[:space:]]*\\(|\\bRepo\\.query!?\\b|Ecto\\.Adapters\\.SQL\\.query|Ash\\.(Expr|Filter\\.parse|Page\\.Keyset)",
+      "patterns": [
+        "fragment(...)",
+        "unsafe_fragment(...)",
+        "_.fragment(...)",
+        "_.unsafe_fragment(...)",
+        "Repo.query(...)",
+        "Repo.query!(...)",
+        "Ecto.Adapters.SQL.query(...)",
+        "Ecto.Adapters.SQL.query!(...)",
+        "Ash.Filter.parse(...)",
+        "Ash.Filter.parse!(...)"
+      ],
+      "bucket": "candidate",
+      "provenance": [
+        "https://cna.erlef.org/cves/CVE-2026-124283.html",
+        "https://cna.erlef.org/cves/CVE-2026-67579.html"
+      ]
+    },
+    {
+      "id": "P07",
+      "title": "Unbounded atom creation",
+      "invariant": "Attacker-controlled or continually changing values must not cause unbounded creation of permanent atoms. Existing-atom conversion is not atom creation.",
+      "grep": "String\\.to_atom|\\bbinary_to_atom\\b|\\blist_to_atom\\b|Module\\.concat\\b",
+      "patterns": [
+        "String.to_atom(...)",
+        ":erlang.binary_to_atom(...)",
+        "binary_to_atom(...)",
+        ":erlang.list_to_atom(...)",
+        "list_to_atom(...)",
+        "Module.concat(...)"
+      ],
+      "bucket": "candidate",
+      "provenance": [
+        "https://security.erlef.org/",
+        "https://www.erlang.org/doc/system/commoncaveats.html"
+      ]
+    },
+    {
+      "id": "CTX",
+      "title": "Context-only textual signals",
+      "invariant": "Ordinary decoding, enumeration, inspection and query words are context, not independent vulnerability predicates. Never use their absence to establish safety.",
+      "grep": "\\b(Inspect|Enumerable|Enum|inspect|to_string|Logger|decode|decoded|query|dynamic|term_to_binary)\\b",
+      "patterns": [],
+      "bucket": "context",
+      "provenance": []
+    }
+  ]
+}

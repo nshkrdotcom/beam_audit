@@ -1,0 +1,10 @@
+/_build/
+/deps/
+/doc/
+/cover/
+/.beam_audit/
+/runs/
+/erl_crash.dump
+/*.ez
+/.env
+/.env.*

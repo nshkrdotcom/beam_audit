@@ -1,0 +1,4 @@
+{
+  "qualified": [],
+  "reason": "Phase 1 cannot prove provider-side read containment. Codex completion-only is documented as read-only, not a host-read allowlist; Antigravity does not currently support completion-only and structured output. Phase 2 must establish the actual ASM boundary before live repository review."
+}
