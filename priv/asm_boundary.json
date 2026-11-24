@@ -1,4 +1,4 @@
 {
   "qualified": [],
-  "reason": "Phase 1 cannot prove provider-side read containment. Codex completion-only is documented as read-only, not a host-read allowlist; Antigravity does not currently support completion-only and structured output. Phase 2 must establish the actual ASM boundary before live repository review."
+  "reason": "ASM 0.17.6 with CLI Subprocess Core 0.10.1 configures Codex completion-only with a read-only sandbox and no approvals. The core profile supplies neither a host-read allowlist nor a shell-tool prohibition. Antigravity lacks an equivalent completion-only and structured-output contract."
 }

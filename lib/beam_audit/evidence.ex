@@ -12,7 +12,8 @@ defmodule BeamAudit.Evidence do
 
   @doc false
   def analyze(run, repo, files, _groups) do
-    source_files = Enum.filter(files, &(Path.extname(&1["path"]) in ~w(.ex .exs .erl .hrl)))
+    # Reach's Erlang frontend uses EPP, which can read includes outside the snapshot.
+    source_files = Enum.filter(files, &(Path.extname(&1["path"]) in ~w(.ex .exs)))
     root = Scope.snapshot_dir(run, repo)
     paths = Enum.map(source_files, &Path.join(root, &1["path"]))
 
@@ -39,7 +40,8 @@ defmodule BeamAudit.Evidence do
              "unmodeled_extensions" => unmodeled,
              "paths_reported" => length(flows),
              "paths_total" => count,
-             "scope" => "source graph only; no target dependency summaries or macro expansion"
+             "scope" =>
+               "Elixir source graph only; Erlang includes, target dependency summaries and macro expansion are outside scope"
            }}
 
         {:error, reason} ->

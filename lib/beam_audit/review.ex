@@ -11,17 +11,9 @@ defmodule BeamAudit.Review do
 
   @doc false
   def provider_check(provider) when provider in ["codex", "antigravity"] do
-    contract = Store.read(Store.priv("asm_boundary.json"))
+    reason = Store.read(Store.priv("asm_boundary.json"))["reason"]
     version = Store.versions()["agent_session_manager"]
-
-    if Enum.any?(
-         contract["qualified"],
-         &(&1["provider"] == provider and &1["asm_version"] == version)
-       ) do
-      :ok
-    else
-      {:error, "ASM boundary not qualified for #{provider}/#{version}: " <> contract["reason"]}
-    end
+    {:error, "ASM boundary not qualified for #{provider}/#{version}: " <> reason}
   end
 
   def provider_check(_), do: {:error, "Provider must be codex or antigravity"}
@@ -149,7 +141,7 @@ defmodule BeamAudit.Review do
   end
 
   @doc false
-  def execute(run, repo, settings, counter, invoke \\ &asm_query/4) do
+  def execute(run, repo, settings, counter, invoke) do
     dir = Path.join(run, repo)
     inventory = Scope.inventory(run, repo)
     groups = Store.read_lines(Path.join(dir, "candidates.jsonl"))
@@ -434,65 +426,4 @@ defmodule BeamAudit.Review do
       Store.write(Path.join([run, repo, "review_errors", phase, id <> ".json"]), %{
         "reason" => reason
       })
-
-  # The versioned qualification gate in provider_check/1 is deliberately
-  # fail-closed in this initial source delivery. A read-only CLI is not a
-  # filesystem read allowlist. Phase 2 must establish the real ASM boundary,
-  # wire it here and qualify the exact supported provider/version pair.
-  defp asm_query(prompt, output_schema, settings, run) do
-    provider =
-      case settings["provider"] do
-        "codex" -> :codex
-        "antigravity" -> :antigravity
-      end
-
-    workspace = Path.join(run, "empty-review-" <> Store.nonce())
-    File.mkdir!(workspace)
-    File.chmod!(workspace, 0o700)
-
-    try do
-      opts = [
-        lane: :core,
-        cwd: workspace,
-        completion_only: true,
-        output_schema: output_schema,
-        run_deadline_ms: settings["deadline_ms"]
-      ]
-
-      opts = if provider == :codex, do: Keyword.put(opts, :skip_git_repo_check, true), else: opts
-      opts = if settings["model"], do: Keyword.put(opts, :model, settings["model"]), else: opts
-
-      case ASM.query(provider, prompt, opts) do
-        {:ok, result} ->
-          metadata = Map.get(result, :metadata, %{}) || %{}
-          cost = Map.get(result, :cost, %{}) || %{}
-          # Preserve only known simple provenance fields; do not serialize SDK
-          # process identities, credential handles or arbitrary provider state.
-          observed = %{
-            "provider" => settings["provider"],
-            "requested_model" => settings["model"],
-            "model" => value(metadata, :model),
-            "lane" => value(metadata, :lane),
-            "input_tokens" => value(cost, :input_tokens),
-            "output_tokens" => value(cost, :output_tokens),
-            "cost_usd" => value(cost, :cost_usd)
-          }
-
-          {:ok, Map.get(result, :object), observed}
-
-        {:error, error} ->
-          {:error, Exception.message(error)}
-      end
-    after
-      File.rm_rf(workspace)
-    end
-  end
-
-  defp value(map, key) do
-    case Map.get(map, key, Map.get(map, Atom.to_string(key))) do
-      value when is_binary(value) or is_number(value) -> value
-      value when is_atom(value) and not is_nil(value) -> Atom.to_string(value)
-      _ -> nil
-    end
-  end
 end

@@ -149,34 +149,13 @@ defmodule BeamAudit.Run do
       config = settings(manifest["settings"], opts)
       # Only the review scheduling/provider choices may change at resume.
       config = Map.put(config, "max_file_bytes", manifest["settings"]["max_file_bytes"])
-      counter = :atomics.new(1, signed: false)
-      :atomics.put(counter, 1, call_count(run))
+      {:error, reason} = Review.provider_check(config["provider"])
 
-      case Review.provider_check(config["provider"]) do
-        :ok ->
-          Store.write(Path.join(run, "review_status.json"), %{
-            "status" => "reviewing",
-            "settings" => config
-          })
-
-          Enum.each(manifest["repositories"], fn repo ->
-            if ready?(run, repo) do
-              Review.execute(run, repo["id"], config, counter)
-            end
-          end)
-
-          Store.write(Path.join(run, "review_status.json"), %{
-            "status" => "review_pass_finished",
-            "settings" => config
-          })
-
-        {:error, reason} ->
-          Store.write(Path.join(run, "review_status.json"), %{
-            "status" => "provider_blocked",
-            "reason" => reason,
-            "settings" => config
-          })
-      end
+      Store.write(Path.join(run, "review_status.json"), %{
+        "status" => "provider_blocked",
+        "reason" => reason,
+        "settings" => config
+      })
 
       Report.render(run)
     end)

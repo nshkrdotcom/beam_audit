@@ -58,7 +58,7 @@ defmodule BeamAudit.Store do
 
   # Only trusted installed BEAM code is placed on this worker's code path.
   # It runs outside the audited source tree, without evaluating target Mix files.
-  def worker(expression, args, cwd) do
+  def worker(expression, args, cwd, stderr_path \\ nil) do
     executable = System.find_executable("elixir") || raise "Elixir executable unavailable"
 
     paths =
@@ -68,9 +68,16 @@ defmodule BeamAudit.Store do
       |> Enum.uniq()
       |> Enum.flat_map(&["-pa", &1])
 
-    System.cmd(executable, paths ++ ["-e", expression, "--" | args],
-      cd: cwd,
-      stderr_to_stdout: true
-    )
+    args = paths ++ ["-e", expression, "--" | args]
+
+    if stderr_path do
+      atomic(stderr_path, "")
+
+      redirect = ~S(stderr=$1; shift; exec "$@" 2>"$stderr")
+      command = ["-c", redirect, "worker", stderr_path, executable | args]
+      System.cmd("sh", command, cd: cwd)
+    else
+      System.cmd(executable, args, cd: cwd, stderr_to_stdout: true)
+    end
   end
 end

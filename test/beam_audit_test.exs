@@ -83,6 +83,7 @@ defmodule BeamAuditTest do
     ledger = Store.read_lines(Path.join(dir, "ledger.jsonl"))
     groups = Store.read_lines(Path.join(dir, "candidates.jsonl"))
     coverage = Store.read(Path.join(dir, "discovery.json"))["coverage"]
+    flows = Store.read_lines(Path.join(dir, "flows.jsonl"))
 
     assert Enum.any?(
              ledger,
@@ -92,6 +93,40 @@ defmodule BeamAuditTest do
 
     assert Enum.any?(ledger, &(&1["tool"] == "ex_ast" and &1["rule"] == "P01"))
     assert Enum.any?(ledger, &(&1["tool"] == "sobelow" and &1["bucket"] == "queued"))
+    ex_ast = Enum.find(coverage, &(&1["tool"] == "ex_ast"))
+    assert ex_ast["invalid_patterns"] == %{}
+
+    for snippet <- [
+          "Crypto.non_executable_binary_to_term",
+          "binary_to_term(input, [:safe])",
+          "struct(tag, values)",
+          "Inspect.inspect(value",
+          "Repo.query(expression"
+        ] do
+      assert Enum.any?(
+               ledger,
+               &(&1["tool"] == "ex_ast" and String.contains?(&1["snippet"], snippet))
+             ),
+             "missing structural hit for #{snippet}"
+    end
+
+    assert Enum.any?(
+             ledger,
+             &(&1["tool"] == "git" and
+                 String.contains?(&1["snippet"], "&:erlang.binary_to_term/2"))
+           )
+
+    assert Enum.any?(flows, fn flow ->
+             flow["source"]["function"] == "binary_to_term" and
+               flow["sink"]["function"] == "to_atom" and length(flow["path"]) > 1
+           end)
+
+    refute Enum.any?(
+             ledger,
+             &(&1["bucket"] == "queued" and
+                 String.contains?(&1["snippet"], "String.to_existing_atom"))
+           )
+
     assert Enum.any?(groups, &(&1["rule"] == "P05"))
     assert Enum.any?(groups, &(&1["rule"] == "P07"))
     refute Enum.any?(groups, &(&1["rule"] == "CTX"))
@@ -121,6 +156,56 @@ defmodule BeamAuditTest do
     original = File.read!(summary.report)
     assert {:ok, _} = BeamAudit.report(run)
     assert File.read!(summary.report) == original
+  end
+
+  test "malformed umbrella source and unsupported Erlang remain visible", ctx do
+    File.rm!(Path.join(ctx.root, "lib/audit_fixture.ex"))
+    path = "apps/child/lib/with space.ex"
+    put(ctx.root, path, ctx.source)
+
+    put(
+      ctx.root,
+      "apps/child/mix.exs",
+      "defmodule Child.MixProject do\n def project, do: [app: :child]\nend\n"
+    )
+
+    broken = "apps/child/lib/broken.ex"
+    put(ctx.root, broken, "defmodule Broken do\n")
+    erlang = "apps/child/src/example.erl"
+    put(ctx.root, erlang, "-module(example).\n")
+    git!(ctx.root, ["add", "--all"])
+
+    git!(ctx.root, [
+      "-c",
+      "user.name=BeamAudit Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "commit",
+      "-qm",
+      "umbrella"
+    ])
+
+    {:ok, summary} = BeamAudit.discover(ctx.root, out: ctx.out)
+    dir = Path.join(summary.path, "r001")
+
+    assert File.exists?(Path.join(dir, "discovery.json")),
+           inspect(Store.read(Path.join(summary.path, "manifest.json"))["repositories"])
+
+    coverage = Store.read(Path.join(dir, "discovery.json"))["coverage"]
+
+    assert %{"status" => "partial", "failed_files" => [%{"path" => ^broken}]} =
+             Enum.find(coverage, &(&1["tool"] == "ex_ast"))
+
+    assert %{"status" => "failed", "exit" => 2} =
+             Enum.find(coverage, &(&1["tool"] == "sobelow:apps/child"))
+
+    assert File.read!(Path.join(dir, "raw/sobelow-2.stderr.log")) =~ "broken.ex"
+    assert erlang in Enum.find(coverage, &(&1["tool"] == "reach"))["unmodeled_extensions"]
+
+    assert Enum.any?(
+             Store.read_lines(Path.join(dir, "ledger.jsonl")),
+             &(&1["tool"] == "git" and &1["path"] == path)
+           )
   end
 
   test "accounting preserves context and rejects out-of-scope analyzer locations", ctx do
@@ -179,13 +264,13 @@ defmodule BeamAuditTest do
     end
   end
 
-  test "accepted decisions survive a budget pause and report regeneration", ctx do
+  test "accepted decisions survive process interruption and report regeneration", ctx do
     {:ok, summary} = BeamAudit.discover(ctx.root, out: ctx.out)
     run = summary.path
     manifest = Run.verify!(run)
 
     settings =
-      Map.merge(manifest["settings"], %{"max_calls" => 1, "jobs" => 1, "batch_size" => 1})
+      Map.merge(manifest["settings"], %{"max_calls" => 2, "jobs" => 1, "batch_size" => 1})
 
     counter = :atomics.new(1, signed: false)
     # Deterministic stand-in for adjudication: tests the ledger, not LLM efficacy.
@@ -195,15 +280,44 @@ defmodule BeamAuditTest do
       {:ok, %{"results" => Enum.map(packets, &disposition/1)}, %{"provider" => "test_fixture"}}
     end
 
-    assert :ok = Review.execute(run, "r001", settings, counter, reviewer)
+    owner = self()
+
+    {coordinator, ref} =
+      spawn_monitor(fn ->
+        Review.execute(run, "r001", settings, counter, fn prompt, schema, settings, run ->
+          if Run.call_count(run) == 2 do
+            send(owner, {:interrupted_call, self()})
+            Process.sleep(:infinity)
+          else
+            reviewer.(prompt, schema, settings, run)
+          end
+        end)
+      end)
+
+    assert_receive {:interrupted_call, worker}, 5_000
+    worker_ref = Process.monitor(worker)
+    Process.exit(coordinator, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^coordinator, :killed}, 5_000
+    assert_receive {:DOWN, ^worker_ref, :process, ^worker, _}, 5_000
     [accepted] = Path.wildcard(Path.join([run, "r001", "decisions", "*.json"]))
     bytes = File.read!(accepted)
+    accepted_id = Path.basename(accepted, ".json")
     {:ok, partial} = BeamAudit.report(run)
     assert partial.pending > 0
     :atomics.put(counter, 1, Run.call_count(run))
 
     assert :ok =
-             Review.execute(run, "r001", Map.put(settings, "max_calls", 200), counter, reviewer)
+             Review.execute(run, "r001", Map.put(settings, "max_calls", 200), counter, fn prompt,
+                                                                                          schema,
+                                                                                          settings,
+                                                                                          run ->
+               if String.contains?(prompt, accepted_id),
+                 do: send(owner, {:resubmitted, accepted_id})
+
+               reviewer.(prompt, schema, settings, run)
+             end)
+
+    refute_received {:resubmitted, ^accepted_id}
 
     assert File.read!(accepted) == bytes
     {:ok, finished} = BeamAudit.report(run)
@@ -220,7 +334,7 @@ defmodule BeamAuditTest do
     assert {:error, _} = BeamAudit.report(run)
   end
 
-  test "unqualified providers fail closed in the initial delivery" do
+  test "unqualified providers fail closed" do
     assert {:error, _} = Review.provider_check("codex")
     assert {:error, _} = Review.provider_check("antigravity")
     assert {:error, _} = Review.provider_check("arbitrary")

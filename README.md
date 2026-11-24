@@ -3,7 +3,7 @@
 </p>
 <p align="center">
   <a href="https://github.com/nshkrdotcom/beam_audit"><img src="https://img.shields.io/badge/github-nshkrdotcom%2Fbeam__audit-24292e.svg" alt="GitHub" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="https://github.com/nshkrdotcom/beam_audit/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
 </p>
 
 # BeamAudit
@@ -16,15 +16,12 @@ BeamAudit is a library and a Mix task. It is not a new static analysis engine,
 dependency scanner, agent framework, or application runtime. It does not modify
 or compile the audited repositories.
 
-> Initial implementation (0.1.0, unreleased): upstream integration and provider
-> boundary qualification are pending local verification. Discovery is available
-> independently of review. The shipped provider qualification list is empty;
-> live review fails closed until the ASM read boundary is established. This is
-> an explicit release gate, not a claim of operational readiness.
+> Unreleased. Discovery and reporting work independently of review. Live review
+> is blocked until ASM can enforce read containment and restrict tool access.
 
 ## Getting started
 
-Requirements: Elixir 1.19+, compatible OTP, Git. The four analysis/review
+Requirements: Elixir 1.20, compatible OTP, and Git. The four analysis/review
 libraries are normal Mix dependencies. ExDoc is a development-only dependency.
 For AI review, use an installed, authenticated ASM-supported provider (Codex by
 preference). No extra scanner installation, target dependencies, environment

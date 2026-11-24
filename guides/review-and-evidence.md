@@ -6,23 +6,17 @@ identity, coverage accounting and report rendering do not use a model.
 
 ## Provider contract
 
-Agent Session Manager owns provider execution. The code uses the documented
-`ASM.query(provider, prompt, options)` one-shot contract, `completion_only`,
-`output_schema`, and the structured result object. There are no direct provider
-CLI invocations and no additional SDK dependencies. Codex is preferred;
-Antigravity is selectable only if the required capability exists. Model
-selection defaults to ASM's model policy. A call uses a finite deadline and is
-reserved against the cumulative budget before launch.
+Live review is blocked. ASM 0.17.6 and CLI Subprocess Core 0.10.1 support Codex
+completion-only and structured output. The generated Codex invocation uses a
+read-only sandbox, and its core profile lacks a host-read allowlist and a shell
+tool prohibition. Antigravity lacks equivalent completion-only and structured
+output support. The local check built a synthetic Codex invocation without
+launching a provider. `resume` records the blocker and renders the stored run.
 
-The initial code has a release-level qualification gate (`priv/asm_boundary.json`).
-Published ASM documentation supports Codex completion-only and structured
-output, but its documented Codex posture is read-only, not a verified host-read
-allowlist. Antigravity's documented common surface does not supply the same
-completion-only/structured output features. A normal CLI invocation with a
-warning prompt is not an equivalent boundary. Phase 2 must verify actual
-containment through the existing ASM stack and qualify the exact version, or
-stop agentic execution. This gate cannot be disabled with a CLI flag. No
-filesystem/container framework should be added here to work around ASM.
+Qualifying a future ASM provider requires binding verified containment to its
+invocation. The intended contract uses `ASM.query/3`, structured output, a finite
+deadline and the cumulative call budget. The options and qualification listed
+in `priv/asm_boundary.json` cannot enable live review by themselves.
 
 ## Adjudication input and output
 

@@ -132,6 +132,15 @@ defmodule BeamAudit.Discovery do
         "context:defp" => "defp _ do ... end"
       })
 
+    {valid, invalid} =
+      patterns
+      |> Enum.sort()
+      |> Enum.split_with(fn {_id, pattern} ->
+        match?({:ok, _}, Store.safe(fn -> ExAST.Pattern.compile(pattern) end))
+      end)
+
+    patterns = Map.new(valid)
+
     elixir_files = Enum.filter(files, &(Path.extname(&1["path"]) in [".ex", ".exs"]))
 
     {hits, spans, errors} =
@@ -175,12 +184,13 @@ defmodule BeamAudit.Discovery do
     Store.write_lines(Path.join([run, repo, "raw", "ex_ast.jsonl"]), Enum.reverse(hits))
 
     {hits, spans,
-     status("ex_ast", if(errors == [], do: "completed", else: "partial"), %{
+     status("ex_ast", if(errors == [] and invalid == [], do: "completed", else: "partial"), %{
        "submitted" => length(elixir_files),
        "failed_files" => Enum.reverse(errors),
        "unmodeled_extensions" =>
          files |> Enum.reject(&(&1 in elixir_files)) |> Enum.map(& &1["path"]),
-       "patterns" => patterns
+       "patterns" => patterns,
+       "invalid_patterns" => Map.new(invalid)
      })}
   end
 
@@ -205,6 +215,7 @@ defmodule BeamAudit.Discovery do
         "--no-config",
         "--no-router",
         "--strict",
+        "--summary",
         "--format",
         "sarif",
         "--include-mix-tasks",
@@ -222,22 +233,25 @@ defmodule BeamAudit.Discovery do
            "args" => args
          })}
       else
+        stderr_path = Path.join([run, repo, "raw", "sobelow-#{index}.stderr.log"])
+
         result =
           Store.safe(fn ->
             expression =
               "Mix.start(); {:ok, _} = Application.ensure_all_started(:sobelow); Mix.Tasks.Sobelow.main(System.argv())"
 
-            Store.worker(expression, args, run)
+            Store.worker(expression, args, run, stderr_path)
           end)
 
         case result do
           {:ok, {out, exit_code}} ->
             Store.atomic(Path.join([run, repo, "raw", "sobelow-#{index}.sarif.log"]), out)
+            diagnostics = File.read!(stderr_path)
 
             decoded =
               if exit_code == 0,
                 do: Store.safe(fn -> sarif(out, target, root) end),
-                else: {:error, "exit #{exit_code}"}
+                else: {:error, "exit #{exit_code}; see #{Path.basename(stderr_path)}"}
 
             case decoded do
               {:ok, hits} ->
@@ -246,6 +260,10 @@ defmodule BeamAudit.Discovery do
                    "matches" => length(hits),
                    "args" => args,
                    "exit" => exit_code,
+                   "scan_summary" =>
+                     diagnostics
+                     |> String.split("\n")
+                     |> Enum.find(&String.starts_with?(&1, "Scan summary: ")),
                    "scope" => "Sobelow-supported paths only; Vuln category excluded"
                  })}
 
