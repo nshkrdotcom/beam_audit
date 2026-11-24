@@ -23,5 +23,6 @@
   "sobelow": {:hex, :sobelow, "0.19.0", "4cb8f53e56c59db25bc0453e97b8efb174bd14d4cbf0e0a324f3d4a5a8125df7", [:mix], [{:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "8d99af19f261075b790a356c41ac95a3c9bf6b0daf8f31babdb2114cb72275e5"},
   "sourceror": {:hex, :sourceror, "1.13.0", "96bec2d8e5b183979fb70bd4d461b69db47fdc90871da599fababe76f7dae493", [:mix], [], "hexpm", "d72dd66dd2b82cc8e818b54ba0ab2ef0314c83ffcf231b1ad2ade00fa2ee3375"},
   "telemetry": {:hex, :telemetry, "1.4.3", "d0333fa869361e6833d6ff8e806ff4d8553fe1332fcce0af86c7381951a1dc2f", [:rebar3], [], "hexpm", "17a63581cf2e832a238287f5fe6811e8ca1f333249f1376ad653164a3c4770d4"},
+  "vulncheck": {:hex, :vulncheck, "1.0.2", "21a55755b6a76abe9e060cc619108af524226a6ad90faf16c3f8a7f2659aaa5a", [:mix], [], "hexpm", "4a29201f69d27fd1d4484002ab504c9e45ddbe424c7bef69a3e1f0ccabb014b5"},
   "zoi": {:hex, :zoi, "0.19.0", "d10f30696eb5d6ae2d9ede5de79bae1e6733e912e22afdff68ec48040801f82a", [:mix], [{:decimal, "~> 2.2 or ~> 3.0", [hex: :decimal, repo: "hexpm", optional: false]}, {:phoenix_html, "~> 2.14.2 or ~> 3.0 or ~> 4.1", [hex: :phoenix_html, repo: "hexpm", optional: true]}], "hexpm", "5bd10583fa64cf0150ec14ed6131c5e4ec4f2cd63389137bc893e48656a5cc03"},
 }

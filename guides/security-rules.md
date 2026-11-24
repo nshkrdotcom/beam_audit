@@ -25,6 +25,18 @@ Direct high-risk signals become candidates. Ordinary decode, logging, file,
 network and state operations may remain context; modeled flows or sensitive
 public entrypoints can promote them into review. Explicit owner questions cover
 application-specific authorization and business invariants without a new DSL.
+
+Generic OTP callbacks and broad entrypoint names are retained as context,
+not automatically treated as separate security investigations. Sensitive
+operations at public boundaries are grouped under their relevant properties.
+Explicit approval/authorization entrypoints, owner questions and nontrivial
+modeled flows can independently create candidates. Context-only classification
+is a review-selection decision, never a verified-safe conclusion.
+
+Known equivalent Sobelow rules are normalized using their native SARIF rule
+names. Original rule IDs and messages remain in the raw ledger. Ordinary
+filesystem signals have medium review priority; this does not limit the
+severity of an established filesystem vulnerability.
 `[:safe]`, non-executable decoding and struct checks cannot independently
 establish application safety. Missing paths cannot establish safety.
 
@@ -32,7 +44,8 @@ ExAST uses native structural matching with host import expansion disabled; bare
 imports, captures and other unresolved spellings may rely on textual signals.
 Definition and module names are lexical; generated code and dynamic dispatch
 are not exhaustively modeled. Reach provides source graph paths and bounded
-slices, not feasible-path proof. Native Erlang semantic analysis is not enabled
+slices, not feasible-path proof. Zero-length source/sink coincidences
+remain context rather than evidence of traversed data flow. Native Erlang semantic analysis is not enabled
 because includes could follow paths outside the snapshot. Erlang, Gleam and
 templates therefore have limited textual coverage. Caps, unsupported files,
 parse failures and other coverage gaps remain visible. The catalogue is not an

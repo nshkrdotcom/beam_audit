@@ -1,5 +1,5 @@
 {
-  "version": "v1-security-2026-11",
+  "version": "v1-security-2026-11-r3",
   "rules": [
     {
       "id": "P01",
@@ -178,7 +178,7 @@
         "File.ln_s(...)"
       ],
       "bucket": "context",
-      "risk": "high",
+      "risk": "medium",
       "provenance": [
         "https://security.erlef.org/",
         "https://www.erlang.org/docs/29/system/secure_coding.html"

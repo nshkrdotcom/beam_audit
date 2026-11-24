@@ -299,12 +299,18 @@ defmodule BeamAudit.Discovery do
   @doc false
   def boundary_hits(native, definitions, identity) do
     context_rules = ~w(P08 P09 P10 P11 P12)
+    sensitive_rules = ~w(P09 P10 P11)
 
     callbacks =
       ~w(handle_call handle_cast handle_info handle_event handle_in handle_continue handle_params perform)
 
-    policy = ~w(approve authorize authorize! dispatch execute invoke request connect resume)
-    context = native |> Enum.filter(&(&1["rule"] in context_rules)) |> Enum.group_by(& &1["path"])
+    entrypoints = ~w(dispatch execute invoke request connect resume)
+    authority = ~w(approve approve! authorize authorize!)
+
+    context =
+      native
+      |> Enum.filter(&(&1["rule"] in context_rules))
+      |> Enum.group_by(& &1["path"])
 
     generated =
       definitions
@@ -312,34 +318,85 @@ defmodule BeamAudit.Discovery do
       |> Enum.flat_map(fn defn ->
         sites =
           Map.get(context, defn["path"], [])
-          |> Enum.filter(&(&1["line"] >= defn["first"] and &1["line"] <= defn["last"]))
+          |> Enum.filter(fn site ->
+            site["line"] >= defn["first"] and site["line"] <= defn["last"]
+          end)
 
         properties = sites |> Enum.map(& &1["rule"]) |> Enum.uniq() |> Enum.sort()
-        # A callback or authority-sensitive public API is a review hypothesis;
-        # never infer trust or a vulnerability from a function's name alone.
-        relevant = defn["function"] in callbacks or defn["function"] in policy or properties != []
+        name = defn["function"]
 
-        if relevant do
-          rule = "P12"
+        sensitive =
+          sites
+          |> Enum.filter(&(&1["rule"] in sensitive_rules))
+          |> Enum.group_by(& &1["rule"])
+          |> Enum.sort()
+          |> Enum.map(fn {rule, matches} ->
+            site = Enum.min_by(matches, &{&1["line"], &1["column"], &1["tool"]})
 
-          [
-            hit("boundary", rule, defn["path"], defn["first"], 1, defn["signature"], "candidate")
+            hit(
+              "boundary",
+              rule,
+              defn["path"],
+              site["line"],
+              site["column"],
+              site["snippet"],
+              "candidate"
+            )
             |> Map.merge(%{
               "boundary" => true,
-              "related_rules" => Enum.uniq([rule | properties]),
+              "related_rules" => [rule],
               "definition" => defn,
               "question" =>
-                "Assess the actual entrypoint, caller trust, sensitive operation, validation and authority contract."
+                "Assess the sensitive operation, caller contract, validation and authority at this public boundary."
             })
-          ]
-        else
-          []
-        end
+          end)
+
+        inventory =
+          if name in callbacks or name in entrypoints or
+               name in authority or "P12" in properties do
+            explicit_authority = name in authority
+
+            row =
+              hit(
+                "boundary",
+                "P12",
+                defn["path"],
+                defn["first"],
+                1,
+                defn["signature"],
+                if(explicit_authority, do: "candidate", else: "context")
+              )
+              |> Map.merge(%{
+                "boundary" => true,
+                "related_rules" => Enum.uniq(["P12" | properties]),
+                "definition" => defn,
+                "question" =>
+                  "Assess the actual entrypoint, caller trust, state transition and authority contract."
+              })
+
+            if explicit_authority do
+              [row]
+            else
+              [Map.put(row, "reason", "entrypoint_inventory")]
+            end
+          else
+            []
+          end
+
+        sensitive ++ inventory
       end)
 
     requested =
       Enum.map(identity["boundaries"] || [], fn spec ->
-        hit("owner_boundary", "P12", spec["path"], spec["line"], 1, spec["question"], "candidate")
+        hit(
+          "owner_boundary",
+          "P12",
+          spec["path"],
+          spec["line"],
+          1,
+          spec["question"],
+          "candidate"
+        )
         |> Map.merge(%{
           "boundary" => true,
           "related_rules" => ["P12"],
@@ -465,6 +522,15 @@ defmodule BeamAudit.Discovery do
         "candidate"
       )
       |> Map.put("native", result)
+      |> Map.put(
+        "native_rule_name",
+        Enum.find_value(
+          get_in(run, ["tool", "driver", "rules"]) || [],
+          fn rule ->
+            if rule["id"] == result["ruleId"], do: rule["name"]
+          end
+        )
+      )
     end
   end
 
@@ -491,14 +557,20 @@ defmodule BeamAudit.Discovery do
 
   # Native IDs are retained on every row. Only exact known equivalent rules
   # share a property group; unrelated findings in a function stay separate.
-  defp canonical_rule(%{"tool" => "sobelow", "rule" => rule}) do
-    case rule do
-      "SOBELOW:Misc.BinToTerm" -> "P01"
-      "SOBELOW:DOS.BinToAtom" -> "P07"
-      "SOBELOW:RCE.CodeModule" -> "P05"
-      "SOBELOW:RCE.EEx" -> "P05"
-      "SOBELOW:RCE.System" -> "P05"
-      "SOBELOW:SQL.Query" -> "P06"
+  defp canonical_rule(%{"tool" => "sobelow", "rule" => rule} = row) do
+    name = row["native_rule_name"] || String.replace_prefix(rule, "SOBELOW:", "")
+
+    case name do
+      "Misc.BinToTerm" -> "P01"
+      "DOS.BinToAtom" -> "P07"
+      "DOS.StringToAtom" -> "P07"
+      "DOS.ModuleConcat" -> "P07"
+      "RCE.CodeModule" -> "P05"
+      "RCE.EEx" -> "P05"
+      "RCE.System" -> "P05"
+      "CI.System" -> "P05"
+      "SQL.Query" -> "P06"
+      "Traversal.FileModule" -> "P09"
       _ -> rule
     end
   end
@@ -524,7 +596,7 @@ defmodule BeamAudit.Discovery do
             })
 
           row["bucket"] == "context" ->
-            Map.put(row, "reason", "context_only_policy")
+            Map.put_new(row, "reason", "context_only_policy")
 
           true ->
             {first, last} =

@@ -41,6 +41,8 @@ defmodule BeamAudit.Evidence do
              "unrepresented_files" => missing,
              "unmodeled_extensions" => unmodeled,
              "paths_reported" => length(flows),
+             "nontrivial_paths_reported" => Enum.count(flows, &nontrivial_flow?/1),
+             "zero_length_paths_reported" => Enum.count(flows, &(not nontrivial_flow?(&1))),
              "paths_total" => count,
              "slice_errors" => slice_errors,
              "symbol_count" => length(symbols),
@@ -106,7 +108,11 @@ defmodule BeamAudit.Evidence do
               "sink" => location(flow.sink, root, inventory),
               "path" => Enum.take(flow.path, 120) |> Enum.map(&Map.get(locations, &1)),
               "path_truncated" => length(flow.path) > 120,
-              "kind" => "modeled_data_flow"
+              "kind" =>
+                if(flow.path == [],
+                  do: "coincident_source_sink",
+                  else: "modeled_data_flow"
+                )
             }
           end)
         end)
@@ -114,7 +120,8 @@ defmodule BeamAudit.Evidence do
       |> Enum.uniq()
       |> Enum.sort_by(&JSON.encode!/1)
 
-    selected = Enum.take(flows, @max_flows)
+    {nontrivial, coincident} = Enum.split_with(flows, &nontrivial_flow?/1)
+    selected = Enum.take(nontrivial ++ coincident, @max_flows)
     # Persist native slices around candidate locations while the graph exists.
     # Later evidence requests never rebuild the project or run arbitrary tools.
     anchors =
@@ -125,7 +132,7 @@ defmodule BeamAudit.Evidence do
     anchors =
       MapSet.new(
         anchors ++
-          Enum.flat_map(selected, fn f ->
+          Enum.flat_map(Enum.filter(selected, &nontrivial_flow?/1), fn f ->
             case f["sink"] do
               %{"path" => path, "line" => line} -> [{path, line}]
               _ -> []
@@ -209,18 +216,32 @@ defmodule BeamAudit.Evidence do
     Enum.map(flows, fn flow ->
       sink = flow["sink"] || %{}
 
-      %{
+      hit = %{
         "tool" => "reach",
         "rule" => flow["rule"],
         "path" => sink["path"],
         "line" => sink["line"],
         "column" => 1,
-        "bucket" => "candidate",
-        "snippet" => "Modeled flow to #{sink["module"]}.#{sink["function"]}",
         "flow" => flow
       }
+
+      if nontrivial_flow?(flow) do
+        Map.merge(hit, %{
+          "bucket" => "candidate",
+          "snippet" => "Modeled flow to #{sink["module"]}.#{sink["function"]}"
+        })
+      else
+        Map.merge(hit, %{
+          "bucket" => "context",
+          "reason" => "zero_length_flow",
+          "snippet" => "Coincident source and sink; no traversed flow"
+        })
+      end
     end)
   end
+
+  defp nontrivial_flow?(%{"path" => [_ | _]}), do: true
+  defp nontrivial_flow?(_), do: false
 
   defp name(x) when is_atom(x), do: Atom.to_string(x)
   defp name(x) when is_binary(x), do: x
@@ -260,6 +281,7 @@ defmodule BeamAudit.Evidence do
 
     relevant =
       flows
+      |> Enum.filter(&nontrivial_flow?/1)
       |> Enum.filter(fn flow ->
         Enum.any?([flow["source"], flow["sink"] | flow["path"]], fn
           %{"path" => ^path, "line" => line} -> line >= group["first"] and line <= group["last"]
@@ -443,6 +465,11 @@ defmodule BeamAudit.Evidence do
                 loc = row[key] || %{}
                 loc["path"] == path and loc["line"] == line
               end)
+
+            records =
+              if op == "trace_flow",
+                do: Enum.filter(records, &nontrivial_flow?/1),
+                else: records
 
             selected = Enum.take(records, 4)
 

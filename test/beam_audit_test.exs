@@ -518,6 +518,253 @@ defmodule BeamAuditTest do
     assert Enum.any?(groups, &("owner_boundary" in &1["tools"]))
   end
 
+  test "zero-length Reach paths remain context", ctx do
+    repo = Scope.resolve(ctx.root, 1)
+    run = Path.join(ctx.out, "flow-control")
+    inventory = Scope.snapshot(run, repo, 1_048_576)
+
+    source = %{
+      "path" => "lib/audit_fixture.ex",
+      "line" => 3,
+      "module" => "AuditFixture",
+      "function" => "decode"
+    }
+
+    sink =
+      Map.merge(source, %{
+        "line" => 4,
+        "function" => "decode_pipe"
+      })
+
+    flows = [
+      %{"rule" => "P09", "source" => source, "sink" => source, "path" => []},
+      %{"rule" => "P04", "source" => source, "sink" => sink, "path" => [source, sink]}
+    ]
+
+    hits = Evidence.flow_hits(flows)
+
+    {ledger, groups, []} =
+      Discovery.account(repo["id"], hits, %{}, inventory, repo)
+
+    assert length(groups) == 1
+    assert Enum.count(ledger, &(&1["bucket"] == "queued")) == 1
+
+    assert [%{"tool" => "reach", "reason" => "zero_length_flow"}] =
+             Enum.filter(ledger, &(&1["bucket"] == "context"))
+  end
+
+  test "native SARIF identifiers consolidate by security property", ctx do
+    repo = Scope.resolve(ctx.root, 1)
+    run = Path.join(ctx.out, "native-rule-control")
+    inventory = Scope.snapshot(run, repo, 1_048_576)
+
+    path = "lib/audit_fixture.ex"
+
+    document = %{
+      "runs" => [
+        %{
+          "tool" => %{
+            "driver" => %{
+              "rules" => [
+                %{"id" => "SBLW019", "name" => "Traversal.FileModule"}
+              ]
+            }
+          },
+          "results" => [
+            %{
+              "ruleId" => "SBLW019",
+              "message" => %{"text" => "Filesystem traversal control"},
+              "locations" => [
+                %{
+                  "physicalLocation" => %{
+                    "artifactLocation" => %{"uri" => path},
+                    "region" => %{"startLine" => 3}
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+    [native] = Discovery.sarif(JSON.encode!(document), ctx.root, ctx.root)
+
+    assert native["rule"] == "SOBELOW:SBLW019"
+    assert native["native_rule_name"] == "Traversal.FileModule"
+
+    structural = %{
+      "tool" => "ex_ast",
+      "rule" => "P09",
+      "path" => path,
+      "line" => 3,
+      "column" => 1,
+      "snippet" => "Filesystem operation",
+      "bucket" => "candidate"
+    }
+
+    {ledger, [group], []} =
+      Discovery.account(
+        repo["id"],
+        [native, structural],
+        %{},
+        inventory,
+        repo
+      )
+
+    assert group["rule"] == "P09"
+    assert length(group["raw_ids"]) == 2
+    assert Enum.any?(ledger, &(&1["rule"] == "SOBELOW:SBLW019"))
+  end
+
+  test "boundary inventory does not queue generic callbacks alone", ctx do
+    repo = Scope.resolve(ctx.root, 1)
+    path = "lib/audit_fixture.ex"
+
+    definition = %{
+      "path" => path,
+      "module" => "AuditFixture",
+      "visibility" => "public",
+      "arity" => 1
+    }
+
+    definitions = [
+      Map.merge(definition, %{
+        "first" => 2,
+        "last" => 4,
+        "function" => "handle_call",
+        "signature" => "handle_call(input)"
+      }),
+      Map.merge(definition, %{
+        "first" => 6,
+        "last" => 8,
+        "function" => "write",
+        "signature" => "write(input)"
+      }),
+      Map.merge(definition, %{
+        "first" => 10,
+        "last" => 12,
+        "function" => "authorize",
+        "signature" => "authorize(input)"
+      })
+    ]
+
+    native = [
+      %{
+        "tool" => "ex_ast",
+        "rule" => "P09",
+        "path" => path,
+        "line" => 7,
+        "column" => 3,
+        "snippet" => "File.write(path, input)",
+        "bucket" => "context"
+      }
+    ]
+
+    hits = Discovery.boundary_hits(native, definitions, repo)
+
+    assert Enum.any?(hits, fn hit ->
+             hit["line"] == 2 and hit["bucket"] == "context" and
+               hit["reason"] == "entrypoint_inventory"
+           end)
+
+    assert Enum.any?(hits, fn hit ->
+             hit["line"] == 7 and hit["bucket"] == "candidate" and
+               hit["rule"] == "P09"
+           end)
+
+    assert Enum.any?(hits, fn hit ->
+             hit["line"] == 10 and hit["bucket"] == "candidate" and
+               hit["rule"] == "P12"
+           end)
+  end
+
+  test "reconsideration archives unresolved decisions and preserves other decisions", ctx do
+    {:ok, summary} =
+      BeamAudit.discover(ctx.root, out: ctx.out, profile: "source")
+
+    run = summary.path
+
+    settings =
+      Run.verify!(run)["settings"]
+      |> Map.merge(%{
+        "max_calls" => 2,
+        "batch_size" => 1,
+        "jobs" => 1
+      })
+
+    counter = :atomics.new(1, signed: false)
+
+    assert :ok =
+             Review.execute(run, "r001", settings, counter, fn prompt, _, _, _ ->
+               [packet] = prompt_packets(prompt)
+               decision = disposition(packet)
+
+               decision =
+                 if Run.call_count(run) == 2 do
+                   Map.merge(decision, %{
+                     "disposition" => "verified_safe",
+                     "severity" => "info",
+                     "safety_basis" => "trusted_constant",
+                     "source_to_sink" => "Synthetic fixture trace only"
+                   })
+                 else
+                   decision
+                 end
+
+               {:ok, %{"results" => [decision]}, %{"provider" => "fixture"}}
+             end)
+
+    files = Path.wildcard(Path.join([run, "r001", "decisions", "*.json"]))
+    assert length(files) == 2
+
+    unresolved =
+      Enum.find(files, fn file ->
+        Store.read(file)["decision"]["disposition"] == "unresolved"
+      end)
+
+    safe =
+      Enum.find(files, fn file ->
+        Store.read(file)["decision"]["disposition"] == "verified_safe"
+      end)
+
+    assert unresolved
+    assert safe
+
+    original = Store.read(unresolved)
+    safe_bytes = File.read!(safe)
+    id = Path.basename(unresolved, ".json")
+
+    assert :ok = Review.reconsider(run, "r001")
+    refute File.exists?(unresolved)
+    assert File.read!(safe) == safe_bytes
+
+    [archive] =
+      Path.wildcard(Path.join([run, "r001", "history", id, "*.json"]))
+
+    assert Store.read(archive)["primary"] == original
+    assert Run.call_count(run) == 2
+    assert {:ok, _} = BeamAudit.report(run)
+
+    assert :ok =
+             Review.execute(
+               run,
+               "r001",
+               Map.put(settings, "max_calls", 3),
+               counter,
+               fn prompt, _, _, _ ->
+                 [packet] = prompt_packets(prompt)
+                 assert packet["candidate"]["id"] == id
+                 {:ok, %{"results" => [disposition(packet)]}, %{"provider" => "fixture"}}
+               end
+             )
+
+    assert Run.call_count(run) == 3
+    assert File.read!(safe) == safe_bytes
+    assert Review.record(run, "r001", "decisions", id)
+    assert {:ok, _} = BeamAudit.report(run)
+  end
+
   defp commit!(root) do
     git!(root, ["add", "--all"])
 

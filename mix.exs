@@ -7,6 +7,7 @@ defmodule BeamAudit.MixProject do
 
   def project do
     [
+      test_ignore_filters: [~r|^test/fixtures/|],
       app: :beam_audit,
       version: @version,
       elixir: "~> 1.20",
