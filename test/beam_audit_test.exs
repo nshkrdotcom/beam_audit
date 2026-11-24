@@ -24,7 +24,12 @@ defmodule BeamAuditTest do
     put(
       root,
       "mix.exs",
-      "defmodule Target.MixProject do\n  use Mix.Project\n  def project, do: raise(\"target executed\")\nend\n"
+      """
+      defmodule Target.MixProject do
+        use Mix.Project
+        def project, do: [app: :target, version: raise("target executed")]
+      end
+      """
     )
 
     git!(root, ["init", "-q"])

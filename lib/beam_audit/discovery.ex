@@ -203,6 +203,7 @@ defmodule BeamAudit.Discovery do
         target,
         "--private",
         "--no-config",
+        "--no-router",
         "--strict",
         "--format",
         "sarif",

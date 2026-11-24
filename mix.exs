@@ -9,7 +9,7 @@ defmodule BeamAudit.MixProject do
     [
       app: :beam_audit,
       version: @version,
-      elixir: "~> 1.19",
+      elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       name: "BeamAudit",
@@ -25,11 +25,11 @@ defmodule BeamAudit.MixProject do
 
   defp deps do
     [
-      {:ex_ast, "~> 0.16.0"},
+      {:ex_ast, "~> 0.12.10"},
       {:reach, "~> 2.8.4"},
       {:sobelow, "~> 0.19.0"},
       {:agent_session_manager, "~> 0.17.6"},
-      {:ex_doc, "~> 0.40", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.40.5", only: :dev, runtime: false}
     ]
   end
 
