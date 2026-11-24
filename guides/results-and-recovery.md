@@ -1,75 +1,47 @@
 # Results and recovery
 
-A run is a local directory, identified by a time-derived prefix and random ID.
-It is not a Git checkout of the target and it is never installed in the target.
+Run records are kept in `~/.beam_audit/runs/RUN_ID` by default. Schema 2 adds
+native dependency results, frozen definitions/symbols/slices, pending evidence
+packets, review history, and finding projections. Schema 1 inputs and challenge
+rules remain readable; do not rewrite old ledgers to add new rule coverage.
+A new policy or revision needs a new discovery run.
 
 ```text
 RUN_ID/
-  manifest.json
-  rules.json
-  prompts/
+  manifest.json, rules.json, prompts/
   r001/
-    inventory.jsonl
-    source/
-    raw/
-    worker.log
-    discovery.json
-    ledger.jsonl
-    candidates.jsonl
-    flows.jsonl
-    decisions/<candidate-id>.json
-    challenges/<candidate-id>.json
-    review_errors/
-    dispositions.jsonl
-  calls/<call-id>.json
-  review_status.json
-  summary.json
-  report.md
+    inventory.jsonl, source/, raw/
+    discovery.json, ledger.jsonl, candidates.jsonl
+    flows.jsonl, definitions.jsonl, symbols.jsonl, slices.jsonl
+    dependency-input/, dependencies.json, dependencies.sha256
+    decisions/, challenges/, pending_decisions/, pending_challenges/
+    history/, review_errors/, dispositions.jsonl, findings.jsonl
+  calls/, review_status.json, summary.json, report.md
 ```
 
-`manifest.json` records selected roots and resolved revisions, settings, rule
-and prompt hashes, analyzer versions and snapshot inventory digests. Each
-repository's `discovery.json` records coverage, scope errors and the frozen
-ledger, candidate and flow hashes. Raw tool results and errors remain visible.
-A worker failure gets its own record rather than a synthetic empty scan.
-
-`ledger.jsonl` accounts for every normalized native hit by raw ID, tool, rule,
-location and bucket. `candidates.jsonl` maps stable group IDs to raw IDs. Both
-are immutable inputs to review. `calls/` records attempts and responses,
-including those that failed. Individual accepted decisions and challenges are
-written using synced temporary files and atomic renames. This supports process
-interruption recovery, not a guarantee against machine power loss or malicious
-modification of every run record.
-
-## Resume
-
-```sh
-mix beam_audit resume RUN_ID
-mix beam_audit resume RUN_ID --max-calls 160
-```
-
-Resume validates snapshots, frozen ledgers, accepted IDs and evidence ranges,
-then processes only outstanding primary/challenge work. Interrupted unaccepted
-calls may be repeated; existing accepted work is not. A rejected or exhausted
-feedback request is unresolved. A call-budget pause leaves unaccepted groups
-pending. The cumulative budget counts reservations even if the provider fails.
-Changing review provider/model is allowed only through explicit options and is
-recorded per call; it cannot change the repository scope or rule policy.
-
-Discovery failures require a fresh discovery run after diagnosing the tool or
-scope failure; resume is for review, not rebuilding a partially captured tree.
-A single coordinating writer is supported per run. Do not edit ledgers,
-decisions or hashes to make a run look complete.
+Manifest and evidence digests freeze the discovery inputs. Records use synced
+temporary files and atomic replacement. This supports process interruption,
+not malicious tampering or guaranteed survival of power loss. Use one writer
+per run. Unaccepted calls may be repeated, but their reservations still count.
+A provider failure pauses further launches; resume only after addressing it.
 
 ```sh
 mix beam_audit report RUN_ID
+mix beam_audit resume RUN_ID --max-calls 25
+mix beam_audit resume RUN_ID --reconsider --max-calls 30
+mix beam_audit compare OLD_RUN NEW_RUN
 ```
 
-Rendering verifies the frozen inputs and writes an aggregate Markdown report,
-JSON summary and per-repository disposition projections. The renderer never
-calls a model. Given identical stored records it renders the same Markdown;
-coverage or review gaps remain explicit even when no findings are accepted.
+`report` and `compare` use stored records and invoke no provider or scanner.
+Pending evidence packets preserve work across budget pauses. Reconsideration
+archives unresolved/disputed records before reopening; no silent change to
+accepted safe or confirmed decisions. Legacy runs have the old frozen policy
+and no dependency result; their reports label it not captured. Byte equality is
+expected for identical stored inputs and renderer, not across releases.
 
-A run directory is private source evidence. Keep it out of Git and published
-Hex packages. Delete it when retention is no longer needed. Do not assume that
-provider-side retention is governed by deleting the local directory.
+Source finding fingerprints combine repository, path, property, definition and
+anchor content. Dependency fingerprints combine repository, project, package
+and advisory. Comparison uses exact matches and reports new, still reported
+and not observed. It does not transfer waivers or prove remediation; changed
+policy, feed, review or scope may explain differences. Use one revision per
+repository in each compared run. Inspect underlying evidence after changes.

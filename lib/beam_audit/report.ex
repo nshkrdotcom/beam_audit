@@ -3,7 +3,7 @@ defmodule BeamAudit.Report do
   Render reports from immutable discovery records and accepted review results.
   Rendering never invokes a scanner, provider, or target repository.
   """
-  alias BeamAudit.{Run, Scope, Store, Review}
+  alias BeamAudit.{Dependencies, Findings, Run, Scope, Store, Review}
 
   @doc false
   def render(run) do
@@ -15,11 +15,13 @@ defmodule BeamAudit.Report do
         do: Store.read(review_path),
         else: %{"status" => "not_started"}
 
-    parts = Enum.map(manifest["repositories"], &repository(run, &1))
+    parts = Enum.map(manifest["repositories"], &repository(run, &1, manifest))
     pending = Enum.sum(Enum.map(parts, & &1.pending))
     unresolved = Enum.sum(Enum.map(parts, & &1.unresolved))
     gaps = Enum.sum(Enum.map(parts, & &1.gaps))
-    findings = Enum.sum(Enum.map(parts, & &1.findings))
+    source_findings = Enum.sum(Enum.map(parts, & &1.findings))
+    dependency_findings = Enum.sum(Enum.map(parts, & &1.dependency_findings))
+    usage = usage(run)
     complete = pending == 0 and gaps == 0 and unresolved == 0
     status = if complete, do: "accounted_within_declared_policy", else: "partial_or_unresolved"
 
@@ -31,7 +33,8 @@ defmodule BeamAudit.Report do
       "Review: #{review["status"]}  \n",
       "Pending: #{pending} · Unresolved: #{unresolved} · Coverage gaps: #{gaps}\n\n",
       if(review["reason"], do: "Review blocker: #{clean(review["reason"])}\n\n", else: ""),
-      "This is a scoped first-party source audit under the captured rule policy, not a security certification. ",
+      "Source findings: #{source_findings}; dependency advisory matches: #{dependency_findings}.\n\n",
+      "This is a scoped source and dependency audit under the captured policy, not a security certification. ",
       "No-match results, incomplete modeling and evidence-grounded review do not establish absence of vulnerabilities.\n\n",
       "## Provenance\n\n",
       "Rules SHA-256: `#{manifest["rules_sha256"]}`\n\n",
@@ -39,6 +42,7 @@ defmodule BeamAudit.Report do
         "- #{name}: #{version}\n"
       end),
       "\nReview attempts reserved: #{Run.call_count(run)}\n\n",
+      "Provider usage (only records with supplied metadata): #{JSON.encode!(usage)}\n\n",
       Enum.map(parts, & &1.text)
     ]
 
@@ -54,7 +58,10 @@ defmodule BeamAudit.Report do
       pending: pending,
       unresolved: unresolved,
       coverage_gaps: gaps,
-      findings: findings,
+      findings: source_findings + dependency_findings,
+      source_findings: source_findings,
+      dependency_findings: dependency_findings,
+      usage: usage,
       repository_count: length(parts)
     }
 
@@ -66,9 +73,18 @@ defmodule BeamAudit.Report do
     summary
   end
 
-  defp repository(run, repo) do
+  defp repository(run, repo, manifest) do
     dir = Path.join(run, repo["id"])
     heading = "## #{clean(repo["name"])} (`#{repo["commit"]}`)\n\n"
+    dependency_data = Dependencies.read(run, repo["id"])
+    dependency_findings = Findings.dependencies(repo, dependency_data)
+
+    dependency_gap =
+      if dependency_data["status"] in ~w(failed partial) or
+           (manifest["schema"] == 2 and dependency_data["status"] == "not_captured" and
+              manifest["settings"]["profile"] != "source"), do: 1, else: 0
+
+    dependency_text = dependency_section(dependency_data, dependency_findings)
 
     if Run.ready?(run, repo) do
       inventory = Scope.inventory(run, repo["id"])
@@ -85,26 +101,33 @@ defmodule BeamAudit.Report do
       coverage_gaps =
         Enum.count(
           data["coverage"],
-          &(&1["status"] != "completed" or Map.get(&1, "unmodeled_extensions", []) != [])
+          &(&1["status"] not in ~w(completed not_requested) or
+              Map.get(&1, "unmodeled_extensions", []) != [])
         ) +
           length(data["scope_errors"]) +
-          Enum.count(
-            excluded,
-            &(&1["reason"] in ~w(source_size_limit unsupported_source_encoding))
-          )
+          if(manifest["settings"]["profile"] == "dependencies",
+            do: 0,
+            else:
+              Enum.count(
+                excluded,
+                &(&1["reason"] in ~w(source_size_limit unsupported_source_encoding))
+              )
+          ) + dependency_gap
 
       pending = Map.get(counts, "pending", 0) + Map.get(counts, "pending_challenge", 0)
       unresolved = Map.get(counts, "unresolved", 0)
-      findings = Enum.filter(decisions, &(&1["effective"] in ~w(confirmed potential)))
+      findings = Findings.source(run, repo, inventory, decisions)
+      Store.write_lines(Path.join(dir, "findings.jsonl"), findings ++ dependency_findings)
       # Store a compact, deterministic machine-readable projection of every group.
       Store.write_lines(Path.join(dir, "dispositions.jsonl"), decisions)
 
       details =
-        findings
-        |> Enum.sort_by(
-          &{severity_order(&1["primary"]["decision"]["severity"]), &1["candidate"]["id"]}
-        )
-        |> Enum.map(&finding/1)
+        Enum.map(findings, fn finding_record ->
+          [
+            finding(hd(finding_record["investigations"])),
+            "Finding fingerprint: `#{finding_record["fingerprint"]}`; investigations: #{Enum.join(finding_record["candidate_ids"], ", ")}.\n\n"
+          ]
+        end)
 
       preliminary =
         Enum.filter(decisions, fn row ->
@@ -127,7 +150,8 @@ defmodule BeamAudit.Report do
         Enum.map(data["coverage"], &coverage/1),
         "\n",
         "Out-of-scope/invalid analyzer hits: #{length(data["scope_errors"])}. See `#{repo["id"]}/ledger.jsonl`.\n\n",
-        "### Actionable findings\n\n",
+        dependency_text,
+        "### Actionable source findings\n\n",
         if(details == [],
           do: "No accepted confirmed or potential findings. This may be an incomplete audit.\n\n",
           else: details
@@ -149,7 +173,8 @@ defmodule BeamAudit.Report do
         pending: pending,
         unresolved: unresolved,
         gaps: coverage_gaps,
-        findings: length(findings)
+        findings: length(findings),
+        dependency_findings: length(dependency_findings)
       }
     else
       failure = Path.join(dir, "discovery_failure.json")
@@ -161,12 +186,19 @@ defmodule BeamAudit.Report do
             else: "Discovery did not complete"
           )
 
+      Store.write_lines(Path.join(dir, "findings.jsonl"), dependency_findings)
+
       %{
-        text: [heading, "**Discovery incomplete:** #{clean(reason)}. No safety conclusions.\n\n"],
+        text: [
+          heading,
+          dependency_text,
+          "**Discovery incomplete:** #{clean(reason)}. No safety conclusions.\n\n"
+        ],
         pending: 0,
         unresolved: 0,
-        gaps: 1,
-        findings: 0
+        gaps: 1 + dependency_gap,
+        findings: 0,
+        dependency_findings: length(dependency_findings)
       }
     end
   end
@@ -281,8 +313,65 @@ defmodule BeamAudit.Report do
   defp counts_text(counts),
     do: counts |> Enum.sort() |> Enum.map(fn {k, v} -> "#{k}=#{v}" end) |> Enum.join(", ")
 
-  defp severity_order(value),
-    do: Enum.find_index(~w(critical high medium low info unknown), &(&1 == value)) || 6
+  defp dependency_section(data, findings) do
+    [
+      "### Dependency security\n\n",
+      "Status: #{clean(data["status"])}. #{clean(data["reason"])}\n\n",
+      if(data["status"] == "not_captured",
+        do: "Dependency assessment was not captured in this run.\n\n",
+        else: ""
+      ),
+      Enum.map(data["projects"], fn project ->
+        native = project["native"] || %{}
+
+        [
+          "- `#{clean(project["path"])}`: #{clean(project["status"])}; mode #{clean(project["mode"])}; #{length(project["packages"] || [])} resolved packages. ",
+          clean(project["reason"]),
+          "\n",
+          "  - #{clean(project["reachability_limit"])} #{clean(project["runtime_limit"])}\n",
+          if(native["feed"], do: "  - Feed: #{clean(JSON.encode!(native["feed"]))}\n", else: ""),
+          Enum.map(native["warnings"] || [], &"  - Warning: #{clean(&1)}\n")
+        ]
+      end),
+      "\n",
+      Enum.map(findings, fn item ->
+        native = hd(item["native_findings"])
+
+        [
+          "#### #{clean(item["package"])} #{clean(item["version"])} — #{clean(item["advisory"])} (#{clean(item["severity"])})\n\n",
+          "Workspace: `#{clean(item["project"])}`; package scope: #{clean(native["package_scope"])}; native reachability: #{Enum.join(item["native_verdicts"], ", ")}. #{clean(item["reachability_limit"])}\n\n",
+          clean(native["summary"]),
+          "\n\n",
+          "Recommended fix: #{clean(native["recommended_fix"] || Enum.join(native["fixed_versions"] || [], ", "))}\n\n",
+          Enum.map(native["references"] || [], &"- #{clean(&1)}\n"),
+          "\n"
+        ]
+      end),
+      if(findings == [],
+        do: "No dependency advisory matches recorded; inspect status and feed coverage.\n\n",
+        else: ""
+      ),
+      "Native classifications are evidence, not a waiver. Resolved lockfile versions do not prove all consumer ranges or deployed versions are safe. See `dependencies.json` for native traces and inventory.\n\n"
+    ]
+  end
+
+  defp usage(run) do
+    calls = Path.wildcard(Path.join([run, "calls", "*.json"])) |> Enum.map(&Store.read/1)
+    fields = ~w(input_tokens output_tokens cost_usd)
+
+    totals =
+      Map.new(fields, fn field ->
+        values = calls |> Enum.map(&get_in(&1, ["reviewer", field])) |> Enum.filter(&is_number/1)
+
+        {field,
+         %{
+           "observed" => if(values == [], do: nil, else: Enum.sum(values)),
+           "records" => length(values)
+         }}
+      end)
+
+    Map.put(totals, "call_statuses", Enum.frequencies_by(calls, & &1["status"]))
+  end
 
   # Model text is data. Suppress raw HTML and control characters in Markdown.
   defp clean(nil), do: ""

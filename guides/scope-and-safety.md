@@ -1,55 +1,32 @@
 # Scope and safety
 
-The audit target is an explicit pair of repository root and immutable Git
-commit. BeamAudit does not recursively discover repositories or follow path
-dependencies, even when they share an owner. No target `mix.exs`, configuration,
-macro, test, application startup, or build hook is evaluated intentionally.
+The target is an explicit repository root and immutable Git commit. HEAD is
+resolved once. Uncommitted and untracked files are not included. Git blob reads
+avoid worktree symlinks and filters; the scanner does not execute target Mix
+configuration, macros, tests, or application startup. The tools and repository
+metadata are assumed to be trusted local inputs, not a hostile OS environment.
 
-## Source policy
+Source snapshots include regular Elixir, Erlang, Gleam and template files
+selected by policy. Test/example trees are excluded by default; dependency,
+build, vendor, symlink and gitlink entries are excluded. Other vendored source
+requires explicit exclusion. The inventory records omissions and reasons.
 
-Git tree enumeration records all tracked entries. Only regular source blobs
-with `.ex`, `.exs`, `.eex`, `.heex`, `.leex`, `.erl`, `.hrl`, or `.gleam` suffixes
-are materialized. Tests, examples and benchmark/fixture trees are excluded by
-default. Dependency/build/vendor directories, explicit exclusions, symlinks,
-gitlinks and non-source formats are recorded as excluded. A source size or
-encoding failure is a coverage gap. Uncommitted and untracked changes are not
-included. A new revision or scope policy requires a new discovery run.
+Dependency metadata is captured separately from the source tree. The native
+scanner uses committed lockfiles and static declarations. External/unavailable
+Mix path references trigger conservative lock-only assessment rather than
+following a neighboring checkout. Path/git packages may lack applicable feed
+coverage; do not confuse lack of matches with safety. Existing build artifact
+capture is explicit and limited to regular files in usual build layouts; it
+never compiles a target. Artifact provenance is weaker than pinned source.
 
-The automatic directory exclusions are conventions, not a proof of ownership.
-Supply explicit exclusions for other vendored or generated source. The target
-inventory is the contract; the name of a repository does not establish which
-code is first party. Templates and non-Elixir syntax have textual coverage only
-unless a native analyzer models them. Sobelow coverage is limited to supported
-application layouts. Its historical dependency advisory category is excluded.
+Review receives bounded packets of source evidence. Its allowed evidence
+operations read only recorded source and analysis facts. The runner validates
+locations, citations and decisions and rejects requests for other repositories.
+ASM owns normal trusted local execution and provider permissions. These controls
+are not OS-level containment. No artificial qualification mechanism is used.
 
-## Execution boundary
-
-Git reads blobs rather than following checked-out symlinks or invoking filters.
-A source snapshot contains selected regular files, not the full worktree or `.git`
-metadata. Separate Elixir worker VMs analyze each repository to avoid carrying
-arbitrary source atoms across a whole ecosystem audit. Sobelow is called outside
-the target Mix project. This is process and input isolation, not a general OS
-sandbox. Use trusted local repositories, Git metadata and installed analyzers.
-Analyzer resource limits and source modeling are not guaranteed for hostile code.
-
-Source ranges are accepted only from the recorded inventory, checked against
-snapshot bytes, and sent as evidence packets. Agent output cannot add a target,
-execute a requested command or register a new tool. ASM manages
-provider execution with native permissions. The empty working directory and
-BeamAudit's evidence policy are application-level controls. They provide no
-OS-level isolation.
-
-## Data handling
-
-Reports, raw scanner output, prompts and source snapshots can contain sensitive
-code and credentials. Run directories are created private to the local owner;
-retain them locally and avoid publishing them with the tool. The provider will
-receive source excerpts when review is enabled. Use only repositories and
-providers authorized for that disclosure. Source comments are untrusted model
-input; response validation cannot solve all prompt-injection attacks or prove
-semantic correctness. No secrets, credentials or actual target code are bundled
-with this project.
-
-The tool makes no source changes. Remediation is a separate owner-approved task.
-No dependency suppression, network scanning, live exploit, or automatic fix is
-part of discovery or adjudication.
+Reports, prompts, provider output and snapshots may contain confidential code.
+Use only authorized providers and repositories. Deleting a local run does not
+control provider retention. Source and native analyzer output are untrusted model
+input. Mechanical evidence validation does not prove semantic correctness.
+BeamAudit makes no source changes. Remediation is a separate owner-approved task.

@@ -22,11 +22,28 @@ defmodule BeamAudit.Discovery do
   end
 
   @doc false
+  def skip(run, repo) do
+    dir = Path.join(run, repo)
+
+    for name <- ~w(ledger candidates flows),
+        do: Store.write_lines(Path.join(dir, name <> ".jsonl"), [])
+
+    Store.write(Path.join(dir, "discovery.json"), %{
+      "coverage" => [%{"tool" => "source", "status" => "not_requested"}],
+      "scope_errors" => [],
+      "ledger_sha256" => Store.digest(""),
+      "candidates_sha256" => Store.digest(""),
+      "flows_sha256" => Store.digest("")
+    })
+  end
+
+  @doc false
   def worker(run, repo) do
     dir = Path.join(run, repo)
     inventory = Scope.inventory(run, repo)
     files = Scope.included(inventory)
-    rules = Store.read(Path.join(run, "rules.json"))["rules"]
+    catalogue = Store.read(Path.join(run, "rules.json"))
+    rules = catalogue["rules"]
 
     identity =
       Store.read(Path.join(run, "manifest.json"))["repositories"]
@@ -37,24 +54,42 @@ defmodule BeamAudit.Discovery do
     # Separate jobs; no application source or target configuration is evaluated.
     git_task = Task.async(fn -> text(run, repo, rules) end)
     sobelow_task = Task.async(fn -> sobelow(run, repo, inventory) end)
-    {ast_hits, spans, ast_status} = structural(run, repo, files, rules)
+    {ast_hits, spans, definitions, ast_status} = structural(run, repo, files, rules)
     {git_hits, git_status} = Task.await(git_task, :infinity)
     {sobelow_hits, sobelow_status} = Task.await(sobelow_task, :infinity)
 
+    native = git_hits ++ ast_hits ++ sobelow_hits
+    boundary_hits = boundary_hits(native, definitions, identity)
+    Store.write_lines(Path.join(dir, "definitions.jsonl"), definitions)
+    {flows, reach_status} = Evidence.analyze(run, repo, files, catalogue, native ++ boundary_hits)
+    Store.write_lines(Path.join(dir, "flows.jsonl"), flows)
+
     {ledger, groups, scope_errors} =
-      account(repo, git_hits ++ ast_hits ++ sobelow_hits, spans, inventory, identity)
+      account(
+        repo,
+        native ++ boundary_hits ++ Evidence.flow_hits(flows),
+        spans,
+        inventory,
+        identity,
+        definitions,
+        rules
+      )
 
     Store.write_lines(Path.join(dir, "ledger.jsonl"), ledger)
     Store.write_lines(Path.join(dir, "candidates.jsonl"), groups)
-    {flows, reach_status} = Evidence.analyze(run, repo, files, groups)
-    Store.write_lines(Path.join(dir, "flows.jsonl"), flows)
 
     Store.write(Path.join(dir, "discovery.json"), %{
       "coverage" => git_status ++ [ast_status] ++ sobelow_status ++ [reach_status],
       "scope_errors" => scope_errors,
       "ledger_sha256" => Store.digest(File.read!(Path.join(dir, "ledger.jsonl"))),
       "candidates_sha256" => Store.digest(File.read!(Path.join(dir, "candidates.jsonl"))),
-      "flows_sha256" => Store.digest(File.read!(Path.join(dir, "flows.jsonl")))
+      "flows_sha256" => Store.digest(File.read!(Path.join(dir, "flows.jsonl"))),
+      "evidence_hashes" =>
+        Map.new(~w(definitions symbols slices), fn name ->
+          path = Path.join(dir, name <> ".jsonl")
+          unless File.regular?(path), do: Store.write_lines(path, [])
+          {name, Store.digest(File.read!(path))}
+        end)
     })
   end
 
@@ -129,7 +164,8 @@ defmodule BeamAudit.Discovery do
     patterns =
       Map.merge(patterns, %{
         "context:def" => "def _ do ... end",
-        "context:defp" => "defp _ do ... end"
+        "context:defp" => "defp _ do ... end",
+        "context:module" => "defmodule _ do ... end"
       })
 
     {valid, invalid} =
@@ -143,8 +179,8 @@ defmodule BeamAudit.Discovery do
 
     elixir_files = Enum.filter(files, &(Path.extname(&1["path"]) in [".ex", ".exs"]))
 
-    {hits, spans, errors} =
-      Enum.reduce(elixir_files, {[], %{}, []}, fn file, {hits, spans, errors} ->
+    {hits, spans, definitions, errors} =
+      Enum.reduce(elixir_files, {[], %{}, [], []}, fn file, {hits, spans, definitions, errors} ->
         result =
           Store.safe(fn ->
             source = Scope.source!(run, repo, file)
@@ -155,7 +191,7 @@ defmodule BeamAudit.Discovery do
               first = Keyword.fetch!(range.start, :line)
               last = Keyword.fetch!(range.end, :line)
               column = Keyword.get(range.start, :column, 1)
-              {to_string(match.pattern), first, last, column, match.source || ""}
+              {to_string(match.pattern), first, last, column, match.source || "", match.node}
             end)
           end)
 
@@ -164,26 +200,35 @@ defmodule BeamAudit.Discovery do
             {contexts, findings} =
               Enum.split_with(matches, &String.starts_with?(elem(&1, 0), "context:"))
 
-            ranges = Enum.map(contexts, fn {_, first, last, _, _} -> {first, last} end)
+            defs = definitions(contexts, file["path"])
+            ranges = Enum.map(defs, &{&1["first"], &1["last"]})
 
             current =
-              Enum.map(findings, fn {pattern, first, _last, col, snippet} ->
+              Enum.map(findings, fn {pattern, first, _last, col, snippet, _node} ->
                 [rule, _] = String.split(pattern, ":", parts: 2)
 
-                hit("ex_ast", rule, file["path"], first, col, snippet, "candidate")
+                hit(
+                  "ex_ast",
+                  rule,
+                  file["path"],
+                  first,
+                  col,
+                  snippet,
+                  Enum.find(rules, &(&1["id"] == rule))["bucket"]
+                )
                 |> Map.put("query", pattern)
               end)
 
-            {current ++ hits, Map.put(spans, file["path"], ranges), errors}
+            {current ++ hits, Map.put(spans, file["path"], ranges), definitions ++ defs, errors}
 
           {:error, reason} ->
-            {hits, spans, [%{"path" => file["path"], "reason" => reason} | errors]}
+            {hits, spans, definitions, [%{"path" => file["path"], "reason" => reason} | errors]}
         end
       end)
 
     Store.write_lines(Path.join([run, repo, "raw", "ex_ast.jsonl"]), Enum.reverse(hits))
 
-    {hits, spans,
+    {hits, spans, definitions,
      status("ex_ast", if(errors == [] and invalid == [], do: "completed", else: "partial"), %{
        "submitted" => length(elixir_files),
        "failed_files" => Enum.reverse(errors),
@@ -192,6 +237,117 @@ defmodule BeamAudit.Discovery do
        "patterns" => patterns,
        "invalid_patterns" => Map.new(invalid)
      })}
+  end
+
+  # Native match ranges and AST nodes, not a new source parser. Module names are
+  # lexical source names (not guaranteed resolved MFAs for generated modules).
+  defp definitions(contexts, path) do
+    modules = Enum.filter(contexts, &(elem(&1, 0) == "context:module"))
+
+    contexts
+    |> Enum.reject(&(elem(&1, 0) == "context:module"))
+    |> Enum.map(fn {kind, first, last, _, snippet, node} ->
+      head =
+        case node do
+          {form, _, [head | _]} when form in [:def, :defp] -> head
+          _ -> nil
+        end
+
+      head =
+        case head do
+          {:when, _, [call | _]} -> call
+          other -> other
+        end
+
+      {name, arity} =
+        case head do
+          {name, _, args} when is_atom(name) and is_list(args) ->
+            {Atom.to_string(name), length(args)}
+
+          {name, _, nil} when is_atom(name) ->
+            {Atom.to_string(name), 0}
+
+          _ ->
+            {nil, nil}
+        end
+
+      mod =
+        modules
+        |> Enum.filter(fn {_, a, b, _, _, _} -> a <= first and b >= last end)
+        |> Enum.sort_by(&elem(&1, 1))
+        |> Enum.map(fn
+          {_, _, _, _, _, {:defmodule, _, [module | _]}} -> Macro.to_string(module)
+          _ -> "?"
+        end)
+        |> Enum.join(".")
+
+      %{
+        "path" => path,
+        "first" => first,
+        "last" => last,
+        "function" => name,
+        "arity" => arity,
+        "module" => mod,
+        "visibility" => if(kind == "context:def", do: "public", else: "private"),
+        "signature" => if(head, do: Macro.to_string(head), else: String.slice(snippet, 0, 120))
+      }
+    end)
+    |> Enum.uniq()
+    |> Enum.sort_by(&{&1["path"], &1["first"], &1["last"]})
+  end
+
+  @doc false
+  def boundary_hits(native, definitions, identity) do
+    context_rules = ~w(P08 P09 P10 P11 P12)
+
+    callbacks =
+      ~w(handle_call handle_cast handle_info handle_event handle_in handle_continue handle_params perform)
+
+    policy = ~w(approve authorize authorize! dispatch execute invoke request connect resume)
+    context = native |> Enum.filter(&(&1["rule"] in context_rules)) |> Enum.group_by(& &1["path"])
+
+    generated =
+      definitions
+      |> Enum.filter(&(&1["visibility"] == "public"))
+      |> Enum.flat_map(fn defn ->
+        sites =
+          Map.get(context, defn["path"], [])
+          |> Enum.filter(&(&1["line"] >= defn["first"] and &1["line"] <= defn["last"]))
+
+        properties = sites |> Enum.map(& &1["rule"]) |> Enum.uniq() |> Enum.sort()
+        # A callback or authority-sensitive public API is a review hypothesis;
+        # never infer trust or a vulnerability from a function's name alone.
+        relevant = defn["function"] in callbacks or defn["function"] in policy or properties != []
+
+        if relevant do
+          rule = "P12"
+
+          [
+            hit("boundary", rule, defn["path"], defn["first"], 1, defn["signature"], "candidate")
+            |> Map.merge(%{
+              "boundary" => true,
+              "related_rules" => Enum.uniq([rule | properties]),
+              "definition" => defn,
+              "question" =>
+                "Assess the actual entrypoint, caller trust, sensitive operation, validation and authority contract."
+            })
+          ]
+        else
+          []
+        end
+      end)
+
+    requested =
+      Enum.map(identity["boundaries"] || [], fn spec ->
+        hit("owner_boundary", "P12", spec["path"], spec["line"], 1, spec["question"], "candidate")
+        |> Map.merge(%{
+          "boundary" => true,
+          "related_rules" => ["P12"],
+          "question" => spec["question"]
+        })
+      end)
+
+    generated ++ requested
   end
 
   defp sobelow(run, repo, inventory) do
@@ -333,8 +489,24 @@ defmodule BeamAudit.Discovery do
 
   defp status(tool, value, details), do: Map.merge(%{"tool" => tool, "status" => value}, details)
 
+  # Native IDs are retained on every row. Only exact known equivalent rules
+  # share a property group; unrelated findings in a function stay separate.
+  defp canonical_rule(%{"tool" => "sobelow", "rule" => rule}) do
+    case rule do
+      "SOBELOW:Misc.BinToTerm" -> "P01"
+      "SOBELOW:DOS.BinToAtom" -> "P07"
+      "SOBELOW:RCE.CodeModule" -> "P05"
+      "SOBELOW:RCE.EEx" -> "P05"
+      "SOBELOW:RCE.System" -> "P05"
+      "SOBELOW:SQL.Query" -> "P06"
+      _ -> rule
+    end
+  end
+
+  defp canonical_rule(row), do: row["rule"]
+
   @doc false
-  def account(repo, hits, spans, inventory, identity) do
+  def account(repo, hits, spans, inventory, identity, definitions \\ [], rules \\ []) do
     rows =
       hits
       |> Enum.sort_by(
@@ -365,12 +537,14 @@ defmodule BeamAudit.Discovery do
                 {row["line"], row["line"]}
               end)
 
+            family = canonical_rule(row)
+
             group =
               Store.id([
                 identity["root"],
                 identity["commit"],
                 row["path"],
-                row["rule"],
+                family,
                 first,
                 last
               ])
@@ -378,6 +552,7 @@ defmodule BeamAudit.Discovery do
             Map.merge(row, %{
               "bucket" => "queued",
               "candidate_id" => group,
+              "family" => family,
               "first" => first,
               "last" => last
             })
@@ -391,11 +566,38 @@ defmodule BeamAudit.Discovery do
       |> Enum.map(fn {id, matches} ->
         first = hd(matches)
 
+        defn =
+          definitions
+          |> Enum.filter(
+            &(&1["path"] == first["path"] and &1["first"] <= first["line"] and
+                &1["last"] >= first["line"])
+          )
+          |> Enum.min_by(&(&1["last"] - &1["first"]), fn -> nil end)
+
+        family = first["family"]
+
+        properties =
+          matches
+          |> Enum.flat_map(&(&1["related_rules"] || [&1["rule"]]))
+          |> Enum.uniq()
+          |> Enum.sort()
+
+        rule = Enum.find(rules, &(&1["id"] == family)) || %{}
+
         %{
           "id" => id,
           "repo" => repo,
           "path" => first["path"],
-          "rule" => first["rule"],
+          "rule" => family,
+          "properties" => Enum.uniq([family | properties]),
+          "boundary" => Enum.any?(matches, &(&1["boundary"] == true)),
+          "risk" =>
+            if(Enum.all?(matches, &(&1["tool"] == "boundary")),
+              do: "medium",
+              else: rule["risk"] || "medium"
+            ),
+          "policy" => 2,
+          "definition" => defn,
           "first" => first["first"],
           "last" => first["last"],
           "raw_ids" => Enum.map(matches, & &1["raw_id"]),

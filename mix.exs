@@ -3,7 +3,7 @@ defmodule BeamAudit.MixProject do
 
   @version "0.1.0"
   @source_url "https://github.com/nshkrdotcom/beam_audit"
-  @description "Reproducible first-party BEAM security audits using structural and semantic analysis with scoped, resumable AI-assisted review."
+  @description "Reproducible BEAM source and dependency security audits with structural and semantic analysis and resumable AI-assisted review."
 
   def project do
     [
@@ -28,6 +28,7 @@ defmodule BeamAudit.MixProject do
       {:ex_ast, "~> 0.12.10"},
       {:reach, "~> 2.8.4"},
       {:sobelow, "~> 0.19.0"},
+      {:vulncheck, "~> 1.0.1"},
       {:agent_session_manager, "~> 0.17.6"},
       {:ex_doc, "~> 0.40.5", only: :dev, runtime: false}
     ]
@@ -53,6 +54,7 @@ defmodule BeamAudit.MixProject do
         "guides/scope-and-safety.md",
         "guides/workflow.md",
         "guides/security-rules.md",
+        "guides/dependencies.md",
         "guides/review-and-evidence.md",
         "guides/integration.md",
         "guides/results-and-recovery.md",
@@ -66,6 +68,7 @@ defmodule BeamAudit.MixProject do
           "guides/scope-and-safety.md",
           "guides/workflow.md",
           "guides/security-rules.md",
+          "guides/dependencies.md",
           "guides/review-and-evidence.md"
         ],
         "Operations and integration": [
@@ -78,8 +81,8 @@ defmodule BeamAudit.MixProject do
       groups_for_modules: [
         "Public API": [BeamAudit],
         Execution: [BeamAudit.Run, BeamAudit.Scope],
-        Analysis: [BeamAudit.Discovery, BeamAudit.Evidence],
-        Review: [BeamAudit.Review, BeamAudit.Report]
+        Analysis: [BeamAudit.Discovery, BeamAudit.Evidence, BeamAudit.Dependencies],
+        Review: [BeamAudit.Review, BeamAudit.Report, BeamAudit.Findings]
       ]
     ]
   end

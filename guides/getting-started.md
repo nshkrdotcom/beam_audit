@@ -1,73 +1,58 @@
 # Getting started
 
-BeamAudit operates from its own checkout, or a trusted Mix project that has it
-as a dependency. Do not run Mix inside an audited project to make the audit work.
-
-## Install and audit
+Run from BeamAudit's own checkout or a trusted Mix project depending on it.
+Never run Mix inside an audited project to make discovery work.
 
 ```sh
 mix deps.get
-mix beam_audit /path/to/repository --discover-only
+mix beam_audit ~/projects/weld --discover-only
+mix beam_audit doctor
 ```
 
-This is the source-only command and needs no provider login. The ordinary
-`mix beam_audit /path/to/repository` command also reviews evidence through ASM
-with an authenticated provider. Use `mix beam_audit doctor` to inspect local prerequisites.
+The default `full` profile covers both source and dependencies. `source` skips
+advisory feeds; `dependencies` skips source analyzers and has no review queue.
+`--discover-only` skips all provider calls. `--offline` uses VulnCheck's cached
+feed data; missing or stale inputs are visible. `--compiled` is opt-in and
+reads existing build artifacts only. Nothing compiles the target.
 
-Pass multiple repository roots as positional arguments. HEAD is resolved once
-per repository. To pin one historical revision use `--rev SHA`.
-
-```sh
-mix beam_audit ~/projects/weld --rev 0f10cbd70ca6d20e8ba1a8b43b09b4fcba3db9c3 --discover-only
-```
-
-## Optional configuration
-
-Use JSON only when repeatable scope or nondefault limits are useful:
+Pin one repository with `--rev SHA`. Select many with positional roots, or use
+a JSON config when per-repository settings are needed:
 
 ```json
 {
   "repositories": [
     {"path": "~/projects/weld", "revision": "HEAD", "exclude": ["third_party"]},
-    {"path": "~/projects/codex_sdk", "revision": "HEAD", "include_tests": true}
+    {"path": "~/projects/codex_sdk", "boundaries": [
+      {"path": "lib/example.ex", "line": 12, "question": "Can untrusted input choose executable authority?"}
+    ]}
   ],
-  "provider": "codex",
-  "jobs": 4,
-  "batch_size": 6,
-  "max_calls": 80
+  "profile": "full",
+  "jobs": 1,
+  "max_calls": 24
 }
 ```
 
-```sh
-mix beam_audit --config audit.json --discover-only
-```
+Replace example boundary locations with real in-scope source anchors. Paths are
+resolved from the caller's working directory. Positional roots and `--config`
+are mutually exclusive. CLI flags override config values.
 
-Repositories are root paths or objects containing `path`, optional `revision`,
-relative directory/file `exclude` entries, and `include_tests`. Config file
-paths are resolved from the caller's working directory, not from the JSON file.
-CLI options override configuration defaults; positional repository arguments
-and `--config` are mutually exclusive. `--rev` applies to one positional root.
-
-| Setting | Default | Meaning |
+| Option | Default | Meaning |
 | --- | --- | --- |
-| `provider` | `codex` | ASM provider; select Antigravity as an alternative |
-| `model` | ASM default | Explicit model override only if requested |
-| `jobs` | 4 | Maximum concurrent review batches; discovery uses at most 2 repository workers |
-| `batch_size` | 6 | Maximum groups in a review call; large packets split further |
-| `max_calls` | 80 | Cumulative reservation budget, including evidence and challenge calls |
-| `evidence_rounds` | 2 | Additional bounded retrieval rounds per batch |
-| `deadline_ms` | 300000 | ASM run deadline in milliseconds |
-| `max_file_bytes` | 1048576 | Individual source snapshot byte limit |
-| `include_tests` | false | Include tests, fixtures and examples |
-| `out` | `~/.beam_audit/runs` | Output root outside selected repositories |
+| profile | full | source, dependency, or combined analysis |
+| compiled | false | use existing local artifact evidence |
+| offline | false | cached advisory data only |
+| provider | codex | ASM provider; alternative antigravity |
+| model | provider default | optional explicit model |
+| jobs | 1 | concurrent calls within one run |
+| batch_size | 6 | maximum groups per call; large packets split |
+| max_calls | 24 | cumulative reservations across all repositories |
+| evidence_rounds | 2 | additional evidence rounds |
+| deadline_ms | 300000 | provider run, queue and stream timeouts |
+| max_file_bytes | 1048576 | snapshot file limit |
+| include_tests | false | include tests, fixtures and examples |
+| out | ~/.beam_audit/runs | results outside target repositories |
 
-Use `--help` for option names. CLI flags use hyphens. There is no mandatory setup
-script, `.env` file, or per-target dependency installation. `doctor` inspects
-local prerequisites and library versions without querying a model.
-
-## Result status
-
-The CLI prints the saved report path before returning. Full audit/resume returns
-an error status when review or coverage is incomplete. `--discover-only` and
-`report` permit partial results because no review is expected. A complete status
-means accounting under the declared policy; it is not a security certification.
+Use `--help` for CLI options. No mandatory provider call is needed for discovery,
+reporting, or comparison. The CLI writes progress to stderr and the saved report
+path to stdout. Partial results remain available after a nonzero full-audit exit.
+A complete accounting status is not a security certification.

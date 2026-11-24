@@ -1,48 +1,38 @@
 # Execution graph
 
-The workflow is a finite set of concrete stages, not a general workflow engine.
-
 ```mermaid
 flowchart TD
-    A[Resolve explicit repositories and revisions] --> B[Materialize first-party snapshots and inventory]
-    B --> C[Git grep]
-    B --> D[ExAST structural queries]
-    B --> E[Sobelow checks]
-    C & D & E --> F[Account and group every raw hit]
-    F --> G[Reach source flow analysis]
-    G --> H[Freeze ledger and evidence]
-    H -->|Discover only| R[Report pending work]
-    H -->|Review| J[Bounded ASM review batches]
-    J --> K[Validate IDs and evidence]
-    K -->|Accepted| L[Persist individual decisions]
-    K -->|Evidence request| M[Validate and retrieve within scope]
-    M -->|Within budget| J
-    M -->|Rejected or exhausted| N[Unresolved]
-    K -->|Provider failure, invalid response or exhausted call budget| P[Pending]
-    L --> O[Challenge consequential decisions]
-    O --> Q[Reconcile and report]
-    N & P --> Q
-    R --> Q
+    A[Pin repositories and inventory] --> B[Native source discovery]
+    A --> D[Capture dependency metadata]
+    B --> C[ExAST definitions and boundary questions]
+    C --> E[Reach flows and slices]
+    E --> F[Account native hits and freeze candidate ledger]
+    D --> G[VulnCheck advisory matching]
+    G --> H[Optional existing artifact reachability]
+    F --> I[Bounded ASM primary review]
+    I --> J[Validate and persist or request stored evidence]
+    J --> I
+    J --> K[Selective challenge review]
+    F --> L[Render partial report]
+    G --> L
+    H --> L
+    K --> L
+    L --> M[Compare accepted findings with later audit]
 ```
 
-Each repository has a separate discovery worker, native tool artifacts and
-candidate ledger. Text and Sobelow jobs run alongside the structural pass.
-Reach runs after structural results; no target compilation is requested.
+Discovery is deterministic and can finish independently of review. Git and
+Sobelow run alongside structural extraction. Reach builds a single project model
+and performs native taint queries grouped by source family. Flow-derived hits
+enter the ledger before grouping. Public sensitive boundaries and owner-supplied
+questions use the same candidate pipeline. Rules, source, analysis facts and
+prompt hashes are frozen for recovery. Dependency scans are serial within a run
+to reuse native feed caching; source coverage does not depend on their success.
 
-Raw results are retained before grouping. A review group is an exact location
-or a small enclosing function range under a single security rule. Identifiers
-include the repository root, revision, rule, path and range. Long definitions
-fall back to line anchors. Identical calls found by several tools retain all
-raw identifiers. Ordinary `Enum`, `inspect`, `decode` and `query` terms are
-context-only under the declared policy; they are not independently queued.
-The rule catalogue and prompts are copied into the run and hashed.
-
-Review is performed only over the deterministic queue. The first pass and the
-challenge pass use bounded parallel batches. Evidence requests only return
-scoped source excerpts or literal-symbol occurrences. A second invocation sees
-the prior result and additional evidence; ASM owns its one-shot provider session.
-No custom agent runtime, provider SDK, graph builder, or parser is implemented.
-
-A missing scan result, unsupported syntax or failed review remains visible.
-There is no policy that silently turns missing evidence into safety. See the
-results guide for interruption and budget behavior.
+Source hits are queued, context-only, or explicitly excluded. Related native
+rules can share an investigation; original hits remain available. A review
+receives recorded source, relevant flows, slices and native messages. The runner
+chooses work, validates results and retrieves only bounded evidence. Additional
+rounds persist before calls. Consequential conclusions receive a challenge.
+Provider errors pause new launches. The cumulative budget is shared by every
+repository in a run. No model participates in inventory, matching, accounting,
+report regeneration or comparison. Separate processes do not share a budget.

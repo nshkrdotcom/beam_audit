@@ -1,8 +1,8 @@
 defmodule BeamAudit do
   @moduledoc """
-  First-party security audits of explicitly selected Git repositories.
+  Source and dependency security audits of explicitly selected Git repositories.
 
-  Discovery is source-only. Review is a bounded evidence-based workflow, not
+  Discovery never builds the target. Review is a bounded evidence-based workflow, not
   autonomous repository scanning. Results are kept on disk and can be resumed.
   See the guides for coverage limits and review behavior.
   """
@@ -23,6 +23,9 @@ defmodule BeamAudit do
 
   @doc "Render a report from persisted results without invoking analyzers or providers."
   def report(run, opts \\ []), do: Run.report(run, opts)
+
+  @doc "Compare accepted source and dependency findings in two persisted runs."
+  def compare(old_run, new_run, opts \\ []), do: Run.compare(old_run, new_run, opts)
 
   @doc "Inspect local prerequisites without executing a target repository or spending tokens."
   def doctor, do: Run.doctor()

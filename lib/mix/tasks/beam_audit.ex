@@ -19,6 +19,10 @@ defmodule Mix.Tasks.BeamAudit do
   @switches [
     help: :boolean,
     discover_only: :boolean,
+    profile: :string,
+    compiled: :boolean,
+    offline: :boolean,
+    reconsider: :boolean,
     provider: :string,
     model: :string,
     out: :string,
@@ -32,7 +36,7 @@ defmodule Mix.Tasks.BeamAudit do
     deadline_ms: :integer,
     max_file_bytes: :integer
   ]
-  @config_keys ~w(provider model out include_tests jobs batch_size max_calls evidence_rounds deadline_ms max_file_bytes)a
+  @config_keys ~w(provider model out include_tests jobs batch_size max_calls evidence_rounds deadline_ms max_file_bytes profile compiled offline)a
 
   @impl Mix.Task
   def run(argv) do
@@ -45,16 +49,21 @@ defmodule Mix.Tasks.BeamAudit do
              mix beam_audit --config audit.json
              mix beam_audit resume RUN_ID [options]
              mix beam_audit report RUN_ID [--out DIRECTORY]
+             mix beam_audit compare OLD_RUN NEW_RUN [--out DIRECTORY]
              mix beam_audit doctor
 
-      --discover-only  Skip agentic review
+      --discover-only  Skip agentic review (source and dependency analysis)
+      --profile NAME   full (default), source, or dependencies
+      --compiled       Include existing local compiled dependency evidence
+      --offline        Use cached advisory data without network requests
+      --reconsider     Explicitly retry unresolved reviews on resume
       --rev REF        Pin a single positional repository (default HEAD)
       --include-tests  Include tests/examples in selected source
       --provider NAME  codex (default) or antigravity
       --model NAME     Optional ASM model override
-      --jobs N         Review concurrency (default 4)
+      --jobs N         Review concurrency (default 1)
       --batch-size N   Candidate groups per call (default 6)
-      --max-calls N    Cumulative call budget (default 80; increase on resume)
+      --max-calls N    Cumulative call budget (default 24; increase on resume)
       --evidence-rounds N  Extra evidence rounds (default 2)
       --deadline-ms N  ASM run deadline (default 300000)
       --max-file-bytes N  Source file limit (default 1048576)
@@ -63,13 +72,20 @@ defmodule Mix.Tasks.BeamAudit do
       """)
     else
       Mix.Task.run("app.start")
-      dispatch(args, opts)
+      dispatch(args, Keyword.put(opts, :on_progress, &progress/1))
     end
   end
 
   defp dispatch(["doctor"], _), do: Mix.shell().info(JSON.encode!(BeamAudit.doctor()))
   defp dispatch(["resume", id], opts), do: finish(BeamAudit.resume(id, opts), false)
   defp dispatch(["report", id], opts), do: finish(BeamAudit.report(id, opts), true)
+
+  defp dispatch(["compare", old, new], opts) do
+    case BeamAudit.compare(old, new, opts) do
+      {:ok, comparison} -> Mix.shell().info(JSON.encode!(comparison))
+      {:error, reason} -> Mix.raise(reason)
+    end
+  end
 
   defp dispatch(args, opts) do
     {repositories, opts} = config(args, opts)
@@ -116,6 +132,17 @@ defmodule Mix.Tasks.BeamAudit do
 
         {Map.fetch!(config, "repositories"), Keyword.merge(configured, opts)}
     end
+  end
+
+  defp progress(event) do
+    message =
+      event
+      |> Map.drop([:run])
+      |> Map.to_list()
+      |> Enum.sort()
+      |> Enum.map_join(" ", fn {key, value} -> "#{key}=#{value}" end)
+
+    IO.puts(:stderr, "BeamAudit: " <> message)
   end
 
   defp finish({:error, reason}, _), do: Mix.raise(reason)

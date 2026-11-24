@@ -1,5 +1,5 @@
 {
-  "version": "incident-family-v1",
+  "version": "v1-security-2026-11",
   "rules": [
     {
       "id": "P01",
@@ -19,7 +19,8 @@
         "https://cna.erlef.org/cves/CVE-2026-129514.html",
         "https://cna.erlef.org/cves/CVE-2026-130411.html",
         "https://security.erlef.org/secure_coding_and_deployment_hardening/serialisation.html"
-      ]
+      ],
+      "risk": "high"
     },
     {
       "id": "P02",
@@ -39,7 +40,8 @@
       "provenance": [
         "https://cna.erlef.org/cves/CVE-2026-67579.html",
         "https://cna.erlef.org/cves/CVE-2026-124283.html"
-      ]
+      ],
+      "risk": "medium"
     },
     {
       "id": "P03",
@@ -51,7 +53,8 @@
       "provenance": [
         "https://cna.erlef.org/cves/CVE-2026-67579.html",
         "https://cna.erlef.org/cves/CVE-2026-124283.html"
-      ]
+      ],
+      "risk": "medium"
     },
     {
       "id": "P04",
@@ -68,7 +71,8 @@
       "bucket": "candidate",
       "provenance": [
         "https://cna.erlef.org/cves/CVE-2026-129514.html"
-      ]
+      ],
+      "risk": "high"
     },
     {
       "id": "P05",
@@ -93,7 +97,8 @@
       "bucket": "candidate",
       "provenance": [
         "https://cna.erlef.org/cves/CVE-2026-133555.html"
-      ]
+      ],
+      "risk": "high"
     },
     {
       "id": "P06",
@@ -116,7 +121,8 @@
       "provenance": [
         "https://cna.erlef.org/cves/CVE-2026-124283.html",
         "https://cna.erlef.org/cves/CVE-2026-67579.html"
-      ]
+      ],
+      "risk": "high"
     },
     {
       "id": "P07",
@@ -135,6 +141,122 @@
       "provenance": [
         "https://security.erlef.org/",
         "https://www.erlang.org/doc/system/commoncaveats.html"
+      ],
+      "risk": "medium"
+    },
+    {
+      "id": "P08",
+      "title": "Resource limits",
+      "invariant": "Untrusted input must not induce unbounded decompression, decoding, task/process creation or other disproportionate work. Establish the actual size, count, time and concurrency bounds.",
+      "grep": ":zlib\\.(uncompress|inflate|gunzip)|\\b(gunzip|uncompress)[[:space:]]*\\(",
+      "patterns": [
+        ":zlib.uncompress(...)",
+        ":zlib.inflate(...)",
+        ":zlib.gunzip(...)"
+      ],
+      "bucket": "candidate",
+      "risk": "high",
+      "provenance": [
+        "https://security.erlef.org/",
+        "https://www.erlang.org/docs/29/system/secure_coding.html"
+      ]
+    },
+    {
+      "id": "P09",
+      "title": "Filesystem authority",
+      "invariant": "Externally selected paths must remain within authorized directories and file operations must not bypass ownership or permissions through traversal, links or races.",
+      "grep": "File\\.(read!?|write!?|open!?|rm_rf!?|cp_rf!?|rename!?|ln_s!?|mkdir_p!?)\\b|:file\\.(read_file|write_file|open|delete|rename)",
+      "patterns": [
+        "File.read(...)",
+        "File.read!(...)",
+        "File.write(...)",
+        "File.write!(...)",
+        "File.open(...)",
+        "File.rm_rf(...)",
+        "File.rm_rf!(...)",
+        "File.rename(...)",
+        "File.ln_s(...)"
+      ],
+      "bucket": "context",
+      "risk": "high",
+      "provenance": [
+        "https://security.erlef.org/",
+        "https://www.erlang.org/docs/29/system/secure_coding.html"
+      ]
+    },
+    {
+      "id": "P10",
+      "title": "Outbound network authority",
+      "invariant": "Externally chosen destinations, redirects and transport options must respect network access and TLS verification policy; a parsed URL is not an authorization decision.",
+      "grep": "\\b(Req|Finch|HTTPoison|Tesla|Mint\\.HTTP)\\.(request!?|get!?|post!?|connect)\\b|:httpc\\.request|verify_none|:verify_none",
+      "patterns": [
+        "Req.request(...)",
+        "Req.get(...)",
+        "Req.post(...)",
+        "Finch.request(...)",
+        "Tesla.request(...)",
+        "Mint.HTTP.connect(...)",
+        ":httpc.request(...)"
+      ],
+      "bucket": "context",
+      "risk": "high",
+      "provenance": [
+        "https://security.erlef.org/",
+        "https://www.erlang.org/docs/29/system/secure_coding.html"
+      ]
+    },
+    {
+      "id": "P11",
+      "title": "Credential and sensitive data handling",
+      "invariant": "Credentials, tokens and private data must not escape through logging, telemetry, serialization or responses. Token checks must establish origin, applicable identity and validity before authority is granted.",
+      "grep": "\\b(Plug\\.Crypto|Phoenix\\.Token|Joken)\\.(verify!?|sign|decrypt|encrypt|peek_claims)\\b|:crypto\\.(strong_rand_bytes|mac|crypto_one_time_aead)|\\bBase\\.decode64!",
+      "patterns": [
+        "Plug.Crypto.verify(...)",
+        "Phoenix.Token.verify(...)",
+        "Joken.peek_claims(...)",
+        ":crypto.strong_rand_bytes(...)",
+        ":crypto.mac(...)"
+      ],
+      "bucket": "context",
+      "risk": "high",
+      "provenance": [
+        "https://security.erlef.org/",
+        "https://www.erlang.org/docs/29/system/secure_coding.html"
+      ]
+    },
+    {
+      "id": "P12",
+      "title": "State and authority boundaries",
+      "invariant": "A public API, message handler or approval transition must enforce the relevant identity, ownership, state and authority before performing a privileged operation. Validate the intended contract; do not assume all library callers are hostile or all internal messages are trusted.",
+      "grep": "\\b(GenServer|GenStateMachine)\\.(call|cast)\\b|\\b:ets\\.(insert|delete|update_element|update_counter)\\b|\\bProcess\\.(put|send)\\b",
+      "patterns": [
+        "GenServer.call(...)",
+        "GenServer.cast(...)",
+        ":ets.insert(...)",
+        ":ets.delete(...)",
+        ":ets.update_element(...)",
+        "Process.put(...)"
+      ],
+      "bucket": "context",
+      "risk": "high",
+      "provenance": [
+        "https://security.erlef.org/",
+        "https://www.erlang.org/docs/29/system/secure_coding.html"
+      ]
+    },
+    {
+      "id": "P13",
+      "title": "Insecure transport and randomness options",
+      "invariant": "Security-sensitive randomness and TLS peer verification must use suitable cryptographic sources and peer checks. Establish actual security use and configuration before a verdict.",
+      "grep": "verify_none|:rand\\.uniform\\b|:crypto\\.rand_uniform\\b",
+      "patterns": [
+        ":rand.uniform(...)",
+        ":crypto.rand_uniform(...)"
+      ],
+      "bucket": "candidate",
+      "risk": "high",
+      "provenance": [
+        "https://security.erlef.org/"
       ]
     },
     {
@@ -144,7 +266,168 @@
       "grep": "\\b(Inspect|Enumerable|Enum|inspect|to_string|Logger|decode|decoded|query|dynamic|term_to_binary)\\b",
       "patterns": [],
       "bucket": "context",
-      "provenance": []
+      "provenance": [],
+      "risk": "info"
+    }
+  ],
+  "flow_sources": {
+    "representation": [
+      "*.binary_to_term",
+      "*.non_executable_binary_to_term",
+      "*.decode_cursor",
+      "*.decode_keyset"
+    ],
+    "external": [
+      "*.binary_to_term",
+      "*.non_executable_binary_to_term",
+      "*.decode",
+      "*.decode!",
+      "*.decode_cursor",
+      "*.decode_keyset",
+      "*.params",
+      "*.body_params",
+      "*.get_param",
+      "*.read_body",
+      "*.recv",
+      "*.get_env",
+      "*.fetch_env!",
+      "*.read",
+      "*.read!",
+      "*.get_body",
+      "*.get_header",
+      "*.get_req_header"
+    ],
+    "sensitive": [
+      "*.get_env",
+      "*.fetch_env!",
+      "*.get_token",
+      "*.get_secret",
+      "*.get_password"
+    ]
+  },
+  "flow_profiles": [
+    {
+      "rule": "P04",
+      "source": "representation",
+      "sinks": [
+        "*.inspect",
+        "*.to_string",
+        "Elixir.Enum.*",
+        "Elixir.Inspect.*",
+        "Elixir.Enumerable.*",
+        "Elixir.String.Chars.*",
+        "Elixir.Logger.*",
+        "Elixir.Jason.Encoder.*"
+      ]
+    },
+    {
+      "rule": "P05",
+      "source": "external",
+      "sinks": [
+        "*.apply",
+        "Elixir.Code.eval_string",
+        "Elixir.Code.eval_quoted",
+        "Elixir.Code.eval_file",
+        "Elixir.Code.compile_string",
+        "Elixir.Code.compile_quoted",
+        "Elixir.Code.compile_file",
+        "Elixir.Code.require_file",
+        "Elixir.System.cmd",
+        "Elixir.System.shell",
+        "os.cmd",
+        "Elixir.Port.open",
+        "Elixir.Function.capture",
+        "erlang.make_fun"
+      ]
+    },
+    {
+      "rule": "P06",
+      "source": "external",
+      "sinks": [
+        "*.fragment",
+        "*.unsafe_fragment",
+        "*.query",
+        "*.query!",
+        "Elixir.Ash.Expr.*",
+        "Elixir.Ash.Filter.*"
+      ]
+    },
+    {
+      "rule": "P07",
+      "source": "external",
+      "sinks": [
+        "Elixir.String.to_atom",
+        "*.binary_to_atom",
+        "*.list_to_atom",
+        "Elixir.Module.concat"
+      ]
+    },
+    {
+      "rule": "P08",
+      "source": "external",
+      "sinks": [
+        "zlib.uncompress",
+        "zlib.inflate",
+        "zlib.gunzip",
+        "Elixir.Task.async_stream",
+        "erlang.open_port"
+      ]
+    },
+    {
+      "rule": "P09",
+      "source": "external",
+      "sinks": [
+        "Elixir.File.read",
+        "Elixir.File.read!",
+        "Elixir.File.write",
+        "Elixir.File.write!",
+        "Elixir.File.open",
+        "Elixir.File.rm_rf",
+        "Elixir.File.rm_rf!",
+        "Elixir.File.rename",
+        "Elixir.File.ln_s",
+        "file.read_file",
+        "file.write_file",
+        "file.delete",
+        "file.open"
+      ]
+    },
+    {
+      "rule": "P10",
+      "source": "external",
+      "sinks": [
+        "Elixir.Req.request",
+        "Elixir.Req.get",
+        "Elixir.Req.post",
+        "Elixir.Finch.request",
+        "Elixir.Tesla.request",
+        "Elixir.Mint.HTTP.connect",
+        "httpc.request"
+      ]
+    },
+    {
+      "rule": "P12",
+      "source": "external",
+      "sinks": [
+        "Elixir.GenServer.call",
+        "Elixir.GenServer.cast",
+        "ets.insert",
+        "ets.delete",
+        "ets.update_element",
+        "Elixir.Process.put"
+      ]
+    },
+    {
+      "rule": "P11",
+      "source": "sensitive",
+      "sinks": [
+        "*.inspect",
+        "Elixir.Logger.*",
+        "Elixir.IO.inspect",
+        "Elixir.IO.puts",
+        "Elixir.Telemetry.execute",
+        "telemetry.execute"
+      ]
     }
   ]
 }

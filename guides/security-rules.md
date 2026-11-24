@@ -1,55 +1,50 @@
 # Security rules and coverage
 
-The initial version implements a small incident-family rule catalogue in
-`priv/rules.json`. It is a first-party candidate policy, not a complete CWE or
-CVE catalogue. The rule metadata includes upstream advisory/guidance links as
-research provenance. These rules require semantic assessment before findings
-are accepted. Historical pre/post patch validation is a release gate.
+`priv/rules.json` contains the versioned source policy. Preserve the original
+incident-family controls and reuse native Sobelow rules. L1 signals are review
+obligations, not proven vulnerabilities. Source and sink names are hypotheses,
+not declarations that values are hostile or that operations are vulnerable.
 
-| ID | Invariant | Discovery |
-| --- | --- | --- |
-| P01 | External data must not reconstruct unvalidated internal terms | ETF decoders, cursor/keyset-related calls |
-| P02 | A struct tag is not a field invariant | Construction, struct tags, casts, custom type signals |
-| P03 | Recursive validation must cover nested keys and values, lists, tuples and fields | Attached to P01/P02 producer/consumer reviews; not a separate regex |
-| P04 | External representation must not select unexpected protocol behavior | Explicit protocol implementations and consumers; rejection paths considered in review |
-| P05 | Data must not choose executable authority without trusted resolution | Dynamic apply, eval/compile, callbacks and command execution signals |
-| P06 | Untrusted input must remain a literal, not an executable query expression | Fragments, SQL query entrypoints, Ash expression/filter signals |
-| P07 | Input must not cause unbounded permanent atom creation | Atom-creating APIs and module concatenation |
-| CTX | Context, not an independent security assertion | Ordinary decode, enumerate, inspect, logging, query and dynamic words |
-| SOBELOW:* | Existing first-party security rules | Native Sobelow findings, without the historical dependency advisory category |
+| Property | Investigation |
+| --- | --- |
+| P01 | External term decoding and internal representations |
+| P02 | Struct identity versus actual field invariants |
+| P03 | Recursive validation of keys, values, tails, fields and tuples |
+| P04 | Implicit protocol dispatch and rejection/error paths |
+| P05 | Dynamic executable authority, evaluation and commands |
+| P06 | Values versus executable query/DSL expressions |
+| P07 | Unbounded atom creation |
+| P08 | Resource and decompression bounds |
+| P09 | Filesystem authority and externally selected paths |
+| P10 | Network destination control |
+| P11 | Sensitive information disclosure |
+| P12 | Public entrypoints, callbacks and authority boundaries |
+| P13 | Insecure transport and randomness choices |
 
-`[:safe]` constrains some ETF features but does not enforce application-level
-schema invariants. Plug.Crypto's non-executable decoding cannot by itself
-establish safe downstream protocol dispatch. Both are always reviewable
-representation boundaries. A fixed implementation may legitimately retain the
-same L1 hit as its vulnerable predecessor. `Module.safe_concat/1,2` is not
-included as an atom-creation predicate. Literal JSON parsing is not treated as
-ETF decoding or code execution merely because the function is named `decode`.
+Direct high-risk signals become candidates. Ordinary decode, logging, file,
+network and state operations may remain context; modeled flows or sensitive
+public entrypoints can promote them into review. Explicit owner questions cover
+application-specific authorization and business invariants without a new DSL.
+`[:safe]`, non-executable decoding and struct checks cannot independently
+establish application safety. Missing paths cannot establish safety.
 
-## How matching works
+ExAST uses native structural matching with host import expansion disabled; bare
+imports, captures and other unresolved spellings may rely on textual signals.
+Definition and module names are lexical; generated code and dynamic dispatch
+are not exhaustively modeled. Reach provides source graph paths and bounded
+slices, not feasible-path proof. Native Erlang semantic analysis is not enabled
+because includes could follow paths outside the snapshot. Erlang, Gleam and
+templates therefore have limited textual coverage. Caps, unsupported files,
+parse failures and other coverage gaps remain visible. The catalogue is not an
+exhaustive CWE or EEF advisory mapping.
 
-The Git pass searches textual API spellings, including references in comments
-and strings. ExAST matches native structural patterns and supplies function
-ranges where available. It does not evaluate macros or load target imports.
-No claim is made that captures, all dynamic aliases, arbitrary wrappers,
-framework DSLs, all protocol consumers or recursive validation are exhaustively
-resolved. Reach contributes modeled flow paths, including decoder-to-consumer
-signals; it does not prove a source is hostile or a path feasible. There is no
-automatic sanitizer whitelist. `CTX` rows are retained but not agent tasks.
+Add or change a rule only with a concrete invariant, relevant existing native
+checks, a representative vulnerable and legitimate input, and a measurable
+improvement. No generic regex just to increase counts. For historical controls,
+measure candidate discovery (L1), grounded violation (L2), and impact evidence
+(L3) separately. A fixed case may retain its L1 hit.
 
-Do not add generic regexes merely to enlarge hit counts. Add a rule only with a
-specific invariant, representative vulnerable and legitimate inputs, a known
-coverage limitation, and evidence that existing checks do not already cover the
-requirement. Verify native query syntax and alias/pipeline variants against the
-installed tool versions. Do not penalize a safe pair for retaining an L1 match.
-
-## Reference material
-
-- [EEF vulnerability index](https://cna.erlef.org/cves/)
-- [EEF serialization guidance](https://security.erlef.org/secure_coding_and_deployment_hardening/serialisation.html)
-- [ExAST pattern and querying documentation](https://ex-ast.hexdocs.pm/)
-- [Reach source and project analysis](https://reach.hexdocs.pm/)
-- [Sobelow checks and options](https://sobelow.hexdocs.pm/)
-
-The handoff lists the five historical incident-family cases and paired-revision
-validation. Do not report those cases as executed in this initial delivery.
+References: [EEF CNA](https://cna.erlef.org/cves/),
+[EEF serialization guidance](https://security.erlef.org/secure_coding_and_deployment_hardening/serialisation.html),
+[ExAST](https://ex-ast.hexdocs.pm/), [Reach](https://reach.hexdocs.pm/),
+[Sobelow](https://sobelow.hexdocs.pm/).

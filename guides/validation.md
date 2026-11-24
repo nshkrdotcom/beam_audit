@@ -1,44 +1,35 @@
-# Verification and release gates
+# Validation
 
-## Verification sequence
+Verify the resolved tool APIs and behavior, not merely that dependency names
+appear in the project. Normal local QA:
 
 ```sh
-mix deps.get --check-locked
-mix format --check-formatted
+mix deps.get
+mix format
 mix compile --warnings-as-errors
 mix test
 mix docs
 mix hex.build
 ```
 
-Do not treat passing a synthetic review test as a measurement of provider
-security judgment. The tests exercise actual Git snapshots and analyzer
-contracts plus a deterministic reviewer fixture for persistence and scope. Run
-real positive and benign controls through native analyzers before trusting
-candidate selection or semantic enrichment. Verify parse failure and unavailable
-scanner handling, native result parsing and umbrella application behavior. Confirm
-that no target code executes, including target `mix.exs` and macros.
+Tests must not execute fixture projects, contact a provider, or require live
+advisories. Use a synthetic offline native feed for version matching and
+source-only fixtures for source analysis. Verify direct, piped, aliased and
+imported decoder candidates, benign context, flow-derived candidates, native
+failure visibility, evidence rejection, recovery and report reproduction.
+Test source/dependency profile behavior and pinned dependency provenance. Mock
+reviewers validate accounting and persistence only, not security judgment.
 
-Reach analyzes the pinned Elixir inputs. Erlang inputs remain visible in
-coverage because the upstream Erlang preprocessor can follow external includes.
+Use the five incident-related historical vulnerable/fixed source pairs from the
+research to check the original security properties. Small faithful source
+extracts are appropriate for L1 controls; broader context is needed for L2/L3.
+Check legitimate variants as well. Avoid live exploits, target compilation,
+large research benchmarks or additional analyzer integration unless a concrete
+missing capability justifies it.
 
-## Provider verification
-
-On an existing run, use an authenticated ASM provider to review one batch.
-Check that the responses are validated against the frozen evidence and that
-accepted decisions survive report regeneration and resume.
-
-## Operational evaluation
-
-Run against Weld first at the recorded commit. Preserve the old textual scan as
-a baseline. Deliberately interrupt after a saved batch; verify resume, no
-re-review of accepted IDs, and byte-identical report regeneration from unchanged
-records. Then run the same workflow against codex_sdk and gemini_ex. Record
-raw hit counts, queued groups, accepted decisions, pending and unresolved counts,
-scanner gaps, token/cost metadata and human review effort. Judge utility by
-actual grounded findings and remediation decisions, not number of generated
-reports. Historic pre/post CVE pairs are separate validation fixtures; they are
-not extra targets in an operational audit.
-
-The separate Phase 2 handoff contains exact acceptance criteria, known interface
-uncertainties, historical revision references and the GitHub setup instructions.
+Live review consumes provider quota. Existing real Codex records can establish
+that the transport worked. Do not start all target reviews as part of ordinary
+QA. If necessary, use one bounded Codex call after deterministic validation;
+never retry automatically on quota exhaustion. Full audits are owner-controlled
+operations distinct from software development. Antigravity is not required for
+release QA. Do not infer provider quality from a mock or a JSON smoke test.

@@ -3,21 +3,24 @@ defmodule BeamAudit.Run do
   Run creation, immutable input accounting, finite review budgets and resume.
   A single coordinating writer owns a run; independent runs can execute in parallel.
   """
-  alias BeamAudit.{Discovery, Report, Review, Scope, Store}
+  alias BeamAudit.{Dependencies, Discovery, Findings, Report, Review, Scope, Store}
 
   @defaults %{
     "provider" => "codex",
     "model" => nil,
-    "jobs" => 4,
+    "jobs" => 1,
     "batch_size" => 6,
-    "max_calls" => 80,
+    "max_calls" => 24,
     "evidence_rounds" => 2,
     "deadline_ms" => 300_000,
     "max_file_bytes" => 1_048_576,
-    "include_tests" => false
+    "include_tests" => false,
+    "profile" => "full",
+    "compiled" => false,
+    "offline" => false
   }
 
-  @option_keys ~w(provider model jobs batch_size max_calls evidence_rounds deadline_ms max_file_bytes include_tests)a
+  @option_keys ~w(provider model jobs batch_size max_calls evidence_rounds deadline_ms max_file_bytes include_tests profile compiled offline)a
 
   @doc false
   def default_out, do: Path.expand("~/.beam_audit/runs")
@@ -105,7 +108,7 @@ defmodule BeamAudit.Run do
         end)
 
       Store.write(Path.join(run, "manifest.json"), %{
-        "schema" => 1,
+        "schema" => 2,
         "id" => Path.basename(run),
         "created_at" => Store.now(),
         "settings" => settings,
@@ -115,11 +118,17 @@ defmodule BeamAudit.Run do
         "prompts_sha256" => prompts
       })
 
+      progress(opts, %{stage: :discovery, run: run, repositories: length(repos)})
+
       repos
       |> Enum.reject(& &1["snapshot_error"])
       |> Task.async_stream(
         fn repo ->
-          case Store.safe(fn -> Discovery.run(run, repo["id"]) end) do
+          case Store.safe(fn ->
+                 if settings["profile"] == "dependencies",
+                   do: Discovery.skip(run, repo["id"]),
+                   else: Discovery.run(run, repo["id"])
+               end) do
             {:ok, _} ->
               :ok
 
@@ -136,6 +145,15 @@ defmodule BeamAudit.Run do
       )
       |> Stream.run()
 
+      # Serial dependency scans share VulnCheck's native feed cache, avoiding
+      # redundant simultaneous downloads. No provider is involved.
+      Enum.each(repos, fn repo ->
+        if is_nil(repo["snapshot_error"]) do
+          progress(opts, %{stage: :dependencies, run: run, repository: repo["name"]})
+          Dependencies.run(run, repo, settings)
+        end
+      end)
+
       Report.render(run)
     end)
   end
@@ -145,9 +163,34 @@ defmodule BeamAudit.Run do
     Store.safe(fn ->
       run = resolve_run(id, opts)
       manifest = verify!(run)
-      config = settings(manifest["settings"], opts)
-      # Only the review scheduling/provider choices may change at resume.
-      config = Map.put(config, "max_file_bytes", manifest["settings"]["max_file_bytes"])
+      base = Map.merge(@defaults, manifest["settings"])
+      # Older runs did not store the analysis profile and used a larger default
+      # concurrency. Their frozen candidate policy remains unchanged.
+      base =
+        if manifest["schema"] == 1,
+          do:
+            Map.merge(base, %{
+              "profile" => "source",
+              "jobs" => 1,
+              "max_calls" => min(base["max_calls"], max(call_count(run), @defaults["max_calls"]))
+            }),
+          else: base
+
+      config =
+        settings(
+          base,
+          Keyword.take(
+            opts,
+            ~w(provider model jobs batch_size max_calls evidence_rounds deadline_ms)a
+          )
+        )
+
+      if opts[:reconsider] and call_count(run) < config["max_calls"] do
+        Enum.each(manifest["repositories"], fn repo ->
+          if ready?(run, repo), do: Review.reconsider(run, repo["id"])
+        end)
+      end
+
       counter = :atomics.new(1, signed: false)
       :atomics.put(counter, 1, call_count(run))
 
@@ -156,14 +199,28 @@ defmodule BeamAudit.Run do
         "settings" => config
       })
 
+      halt = :atomics.new(1, signed: false)
+      execution = config |> Map.put("halt", halt) |> Map.put("progress", opts[:on_progress])
+
       Enum.each(manifest["repositories"], fn repo ->
-        if ready?(run, repo) do
-          Review.execute(run, repo["id"], config, counter)
+        if ready?(run, repo) and :atomics.get(halt, 1) == 0 and
+             :atomics.get(counter, 1) < config["max_calls"] do
+          progress(opts, %{
+            stage: :review,
+            run: run,
+            repository: repo["name"],
+            calls: call_count(run)
+          })
+
+          Review.execute(run, repo["id"], execution, counter)
         end
       end)
 
+      status =
+        if :atomics.get(halt, 1) == 1, do: "paused_provider_error", else: "review_pass_finished"
+
       Store.write(Path.join(run, "review_status.json"), %{
-        "status" => "review_pass_finished",
+        "status" => status,
         "settings" => config
       })
 
@@ -198,7 +255,7 @@ defmodule BeamAudit.Run do
   @doc false
   def verify!(run) do
     manifest = Store.read(Path.join(run, "manifest.json"))
-    if manifest["schema"] != 1, do: raise("Unsupported run format")
+    if manifest["schema"] not in [1, 2], do: raise("Unsupported run format")
     check_hash(Path.join(run, "rules.json"), manifest["rules_sha256"])
 
     Enum.each(manifest["prompts_sha256"], fn {name, hash} ->
@@ -209,6 +266,7 @@ defmodule BeamAudit.Run do
       if is_nil(repo["snapshot_error"]) do
         dir = Path.join(run, repo["id"])
         check_hash(Path.join(dir, "inventory.jsonl"), repo["inventory_sha256"])
+        Dependencies.read(run, repo["id"])
         inventory = Scope.inventory(run, repo["id"])
         Enum.each(Scope.included(inventory), &Scope.source!(run, repo["id"], &1))
 
@@ -217,6 +275,11 @@ defmodule BeamAudit.Run do
 
           Enum.each(~w(ledger candidates flows), fn file ->
             check_hash(Path.join(dir, file <> ".jsonl"), data[file <> "_sha256"])
+          end)
+
+          Enum.each(data["evidence_hashes"] || %{}, fn {file, hash} ->
+            unless file in ~w(definitions symbols slices), do: raise("Unknown evidence file")
+            check_hash(Path.join(dir, file <> ".jsonl"), hash)
           end)
 
           verify_ledger!(dir, repo, inventory)
@@ -252,6 +315,18 @@ defmodule BeamAudit.Run do
              ),
            do: raise("Candidate ledger does not reconcile")
 
+    for phase <- ~w(pending_decisions pending_challenges),
+        path <- Path.wildcard(Path.join([dir, phase, "*.json"])) do
+      id = Path.basename(path, ".json")
+      packet = Store.read(path)["packet"]
+      group = Enum.find(groups, &(&1["id"] == id))
+
+      unless group && packet["candidate"] == group && packet["evidence_round"] in 1..4,
+        do: raise("Invalid pending evidence packet: #{path}")
+
+      verify_excerpts!(packet, path, dir, repo, inventory)
+    end
+
     Enum.each(~w(decisions challenges), fn phase ->
       for path <- Path.wildcard(Path.join([dir, phase, "*.json"])) do
         id = Path.basename(path, ".json")
@@ -271,20 +346,24 @@ defmodule BeamAudit.Run do
                  rec["decision"]["requests"] == [],
                do: raise("Invalid persisted decision: #{path}")
 
-        Enum.each(rec["packet"]["excerpts"], fn excerpt ->
-          expected =
-            BeamAudit.Evidence.excerpt(
-              Path.dirname(dir),
-              repo["id"],
-              inventory,
-              excerpt["path"],
-              excerpt["first"],
-              excerpt["last"]
-            )
-
-          unless excerpt == expected, do: raise("Invalid persisted evidence: #{path}")
-        end)
+        verify_excerpts!(rec["packet"], path, dir, repo, inventory)
       end
+    end)
+  end
+
+  defp verify_excerpts!(packet, path, dir, repo, inventory) do
+    Enum.each(packet["excerpts"], fn excerpt ->
+      expected =
+        BeamAudit.Evidence.excerpt(
+          Path.dirname(dir),
+          repo["id"],
+          inventory,
+          excerpt["path"],
+          excerpt["first"],
+          excerpt["last"]
+        )
+
+      unless excerpt == expected, do: raise("Invalid persisted evidence: #{path}")
     end)
   end
 
@@ -294,6 +373,22 @@ defmodule BeamAudit.Run do
     |> Enum.map(fn path -> path |> Path.basename(".json") |> String.to_integer() end)
     |> Enum.max(fn -> 0 end)
   end
+
+  @doc false
+  def compare(old, new, opts) do
+    Store.safe(fn -> Findings.compare(resolve_run(old, opts), resolve_run(new, opts)) end)
+  end
+
+  @doc false
+  def progress(opts, event) when is_list(opts), do: progress(opts[:on_progress], event)
+
+  def progress(fun, event) when is_function(fun, 1) do
+    # Observers cannot make an audit fail. The event contains no source text.
+    Store.safe(fn -> fun.(event) end)
+    :ok
+  end
+
+  def progress(_, _), do: :ok
 
   defp settings(base, opts) do
     result =
@@ -305,6 +400,13 @@ defmodule BeamAudit.Run do
       end)
 
     if result["provider"] not in ~w(codex antigravity), do: raise("Unsupported provider")
+
+    if result["profile"] not in ~w(full source dependencies),
+      do: raise("Invalid analysis profile")
+
+    for key <- ~w(compiled offline include_tests) do
+      unless is_boolean(result[key]), do: raise("Invalid #{key}")
+    end
 
     for {key, range} <- [
           {"jobs", 1..16},

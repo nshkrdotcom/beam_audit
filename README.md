@@ -8,23 +8,19 @@
 
 # BeamAudit
 
-Reproducible first-party security auditing for Elixir and the BEAM. Discover
-candidate vulnerability patterns with existing analyzers, gather evidence,
-review with a bounded AI adjudicator, and produce a reconciled report.
+Reproducible source and dependency security auditing for Elixir and the BEAM.
+Combine native structural and semantic analysis, dependency advisory matching,
+and bounded AI-assisted investigation in a single evidence-backed report.
 
-BeamAudit is a library and a Mix task. It is not a new static analysis engine,
-dependency scanner, agent framework, or application runtime. It does not modify
-or compile the audited repositories.
-
-> Unreleased. Discovery and reporting work independently of review.
+BeamAudit is a library and a Mix task. It does not compile, execute, or modify
+its target projects. It does not replace the underlying analyzers or ASM.
 
 ## Getting started
 
-Requirements: Elixir 1.20, compatible OTP, and Git. The four analysis/review
-libraries are normal Mix dependencies. ExDoc is a development-only dependency.
-For AI review, use an installed, authenticated ASM-supported provider (Codex by
-preference). No extra scanner installation, target dependencies, environment
-variables, containers, or service configuration.
+Requires Elixir 1.20, compatible OTP, and Git. The analyzer libraries are
+ordinary Mix dependencies. AI review also requires an authenticated ASM provider;
+Codex is the default. There are no required environment variables, additional
+scanner binaries, or services.
 
 ```sh
 git clone https://github.com/nshkrdotcom/beam_audit.git
@@ -33,107 +29,72 @@ mix deps.get
 mix beam_audit ~/projects/weld --discover-only
 ```
 
-With an authenticated provider:
+The default full profile captures committed source and dependency metadata.
+Discovery-only does not call a model. Advisory data may be fetched through
+VulnCheck's native feed cache. Inspect the saved report before spending tokens.
 
 ```sh
-mix beam_audit ~/projects/weld ~/projects/codex_sdk ~/projects/gemini_ex
-```
-
-The command pins HEAD of each selected repository, snapshots the authorized
-tracked source, runs deterministic checks, and reviews pending
-candidate groups through ASM. It prints the run ID and report location.
-Results default to `~/.beam_audit/runs/`; `--out` selects another results root
-outside the targets.
-
-```sh
-mix beam_audit resume RUN_ID
+mix beam_audit ~/projects/weld ~/projects/codex_sdk
+mix beam_audit ~/projects/weld --profile source --discover-only
+mix beam_audit ~/projects/weld --profile dependencies
+mix beam_audit resume RUN_ID --max-calls 25
 mix beam_audit report RUN_ID
-mix beam_audit doctor
-mix beam_audit --help
+mix beam_audit compare OLD_RUN NEW_RUN
 ```
 
-Use `--config audit.json` for explicitly pinned repository lists or exclusions.
-Ordinary use needs no configuration. Only committed source is audited; tests and
-examples are separate, opt-in scope. See [Scope and safety](guides/scope-and-safety.md).
+New runs default to one concurrent provider call and at most 24 reserved calls
+across all repositories in that run. A provider failure pauses new launches.
+Resume does not repeat discovery or accepted decisions. It uses a cumulative
+budget; increase it deliberately. Independent processes do not share a quota.
+Use `--compiled` only when existing build artifacts are wanted as additional
+reachability evidence. No target build is performed.
 
-## Library usage
+## Analysis
 
-Before publication, depend on the Git repository:
-
-```elixir
-{:beam_audit, github: "nshkrdotcom/beam_audit"}
-```
-
-After an actual Hex release, use `{:beam_audit, "~> 0.1.0"}` instead.
-
-```elixir
-{:ok, run} = BeamAudit.discover(["/path/to/weld"])
-{:ok, result} = BeamAudit.resume(run.path)
-{:ok, report} = BeamAudit.report(result.path)
-```
-
-`BeamAudit.audit/2` combines discovery and review. The same library drives the
-Mix task; no standalone agent runtime or server is required.
-
-## Execution contract
-
-| Stage | Owner |
+| Component | Responsibility |
 | --- | --- |
-| Scope, Git snapshots, inventory | BeamAudit / Git |
-| Textual and structural discovery | Git grep / ExAST |
-| Established first-party checks | Sobelow |
-| Source data-flow evidence | Reach |
-| Candidate grouping, review queue, reconciliation | BeamAudit |
-| Security-property judgment and independent challenge | ASM-backed provider |
-| Remediation and regression execution | Repository owner, outside this audit |
+| Git | Pinned source and metadata; conservative text signals |
+| ExAST | Structural queries, lexical definitions and source locations |
+| Sobelow | Native security rules and diagnostics |
+| Reach | Rule-directed modeled data flow, call sites and slices |
+| VulnCheck | Resolved dependency advisories and optional compiled reachability |
+| Agent Session Manager | Bounded semantic adjudication and challenge review |
 
-Every raw finding is queued, retained as context, or explicitly excluded under
-the captured policy. Failed or unsupported scans stay visible. Accepted review
-records are written individually; a resume does not re-review them. A report
-can be regenerated without running scanners or consuming LLM tokens.
+Reach paths can independently generate candidates. Public security-sensitive
+boundaries and explicit owner questions can also enter the queue. Native hits,
+context, exclusions, review records, and coverage gaps remain traceable.
+Dependency advisories are deterministic results, not model judgments.
 
-The initial policy targets unsafe representation reconstruction, struct trust,
-nested validation, implicit protocol dispatch, executable authority, interpreted
-query expressions and atom creation. Sobelow provides additional existing checks.
-This is not a comprehensive BEAM vulnerability catalogue. Static matching,
-call reachability and semantic evidence are not interchangeable with proof.
+## Integration
 
-## Documentation
+Use the same API from a trusted Mix project that depends on BeamAudit:
 
-**Getting started**
-- [Installation, commands and configuration](guides/getting-started.md)
-
-**Audit workflow**
-- [Scope and safety](guides/scope-and-safety.md)
-- [Execution graph](guides/workflow.md)
-- [Security rules and coverage](guides/security-rules.md)
-- [Agentic review and evidence](guides/review-and-evidence.md)
-
-**Operations and integration**
-- [Library integration](guides/integration.md)
-- [Results and recovery](guides/results-and-recovery.md)
-- [Verification and release gates](guides/validation.md)
-
-**Project**
-- [Changelog](CHANGELOG.md)
-- [MIT license](LICENSE)
-
-## Development
-
-```sh
-mix deps.get
-mix format
-mix compile --warnings-as-errors
-mix test
-mix docs
-mix hex.build
+```elixir
+{:ok, run} = BeamAudit.discover(["/path/to/repository"], profile: "full")
+{:ok, summary} = BeamAudit.resume(run.path, max_calls: 12)
+{:ok, report} = BeamAudit.report(summary.path)
+{:ok, changes} = BeamAudit.compare(old_run, summary.path)
 ```
 
-The tests include pinned-source scope, native analyzer contracts, reconciliation,
-and review recovery with a deterministic test reviewer. They do not substitute
-for a live analyzer or provider evaluation. The initial delivery could not run
-these BEAM commands; see the validation guide and Phase 2 handoff.
+The report separates source findings from dependency advisory matches. A native
+reachability verdict is not a waiver, and a missing or unresolved result is not
+proof of safety. Exact-fingerprint comparison helps review changes but never
+claims an unobserved finding is fixed. Language and policy limitations are
+reported rather than hidden. Elixir is the primary semantic target; Erlang,
+Gleam and templates have limited coverage.
+
+## Guides
+
+- [Getting started](guides/getting-started.md)
+- [Scope and safety](guides/scope-and-safety.md)
+- [Workflow](guides/workflow.md)
+- [Security rules](guides/security-rules.md)
+- [Dependency security](guides/dependencies.md)
+- [Review and evidence](guides/review-and-evidence.md)
+- [Integration](guides/integration.md)
+- [Results and recovery](guides/results-and-recovery.md)
+- [Validation](guides/validation.md)
 
 ## License
 
-MIT. Copyright (c) 2026 nshkrdotcom.
+MIT. See [LICENSE](LICENSE).

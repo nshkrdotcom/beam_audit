@@ -40,10 +40,13 @@ defmodule BeamAudit.Store do
   end
 
   def versions do
-    Map.new([:beam_audit, :ex_ast, :reach, :sobelow, :agent_session_manager], fn app ->
-      Application.load(app)
-      {Atom.to_string(app), to_string(Application.spec(app, :vsn) || "unavailable")}
-    end)
+    Map.new(
+      [:beam_audit, :ex_ast, :reach, :sobelow, :vulncheck, :agent_session_manager],
+      fn app ->
+        Application.load(app)
+        {Atom.to_string(app), to_string(Application.spec(app, :vsn) || "unavailable")}
+      end
+    )
   end
 
   def safe(fun) do

@@ -42,6 +42,19 @@ defmodule BeamAudit.Scope do
     unless Regex.match?(~r/\A[0-9a-f]{40,64}\z/, commit), do: raise("Invalid Git commit")
     excludes = Map.get(spec, "exclude", [])
     unless is_list(excludes) and Enum.all?(excludes, &relative?/1), do: raise("Invalid exclusion")
+    boundaries = Map.get(spec, "boundaries", [])
+
+    unless is_list(boundaries) and
+             Enum.all?(boundaries, fn
+               %{"path" => path, "line" => line, "question" => question} ->
+                 relative?(path) and is_integer(line) and line > 0 and is_binary(question) and
+                   byte_size(question) in 1..1000
+
+               _ ->
+                 false
+             end),
+           do: raise("Invalid boundary specifications")
+
     include_tests = Map.get(spec, "include_tests", false)
     unless is_boolean(include_tests), do: raise("include_tests must be boolean")
 
@@ -52,7 +65,8 @@ defmodule BeamAudit.Scope do
       "commit" => commit,
       "revision" => revision,
       "exclude" => excludes,
-      "include_tests" => include_tests
+      "include_tests" => include_tests,
+      "boundaries" => boundaries
     }
   end
 

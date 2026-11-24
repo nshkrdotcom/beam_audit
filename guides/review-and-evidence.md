@@ -1,59 +1,42 @@
-# Agentic review and evidence
+# Review and evidence
 
-BeamAudit delegates semantic security judgment only. Deterministic discovery,
-file classification, source extraction, analyzer invocation, batching, candidate
-identity, coverage accounting and report rendering do not use a model.
+The review engine calls `ASM.query/3`. Codex uses the supported completion-only
+structured response; Antigravity remains an alternative with locally validated
+JSON. Provider/model selection is explicit. Queue, stream and run timeouts use
+the configured deadline. No artificial provider qualification gate is used.
 
-## Provider contract
-
-BeamAudit calls `ASM.query/3` with a finite run deadline and a cumulative
-call budget. Codex is the default and uses native structured output in
-completion-only mode. Antigravity uses its native permissions and returns
-JSON text, which BeamAudit decodes and validates locally. Model selection
-uses the provider default unless you pass an explicit model.
-
-## Adjudication input and output
-
-Each candidate packet contains the rule, all originating signals, bounded source
-ranges with immutable evidence IDs, and selected modeled Reach flows. The model
-returns exactly one result per submitted candidate. Invalid, duplicate or missing
-IDs reject the response; unknown evidence references reject the corresponding
-decision. Every non-unresolved verdict must cite source evidence covering its
-candidate anchor(s). References identify supplied excerpts rather than arbitrary
-strings that happen to look like `file:line`.
+A review packet contains a stable candidate, relevant security properties,
+source excerpts with citable IDs, original native signals and context, and
+selected Reach paths/slices. Review can ask about a deterministic finding or a
+public/owner-specified security boundary. An agent does not choose the repository
+set, run scanners, edit source, or establish accounting status.
 
 | Disposition | Meaning |
 | --- | --- |
-| `confirmed` | Grounded first-party invariant violation with trace, proposed fix and harmless regression check |
-| `potential` | Plausible security issue with stated uncertainty |
-| `verified_safe` | Evidence-backed safe conclusion for the candidate and stated boundary; not a proof of entire repository safety |
-| `unresolved` | Insufficient or contradictory evidence |
-| `pending` | No accepted primary review; never a safety conclusion |
-| `pending_challenge` | Primary review saved; consequential conclusion not yet accepted as final |
+| confirmed | Grounded violation, trace, minimal fix and regression |
+| potential | Plausible violation with stated uncertainty |
+| verified_safe | Evidence-backed invariant under stated scope |
+| not_applicable | Concrete explanation why the rule does not apply |
+| unresolved | Insufficient or conflicting evidence |
+| pending | No accepted decision yet |
+| pending_challenge | Primary conclusion needs independent challenge |
 
-Schema validation verifies the shape and provenance, not the truth of the
-reasoning. A safe-basis enum is not itself a proof. Challenge review is required
-for safe conclusions on the incident-family rules and high/critical confirmed or
-potential findings. Material disposition/severity disagreement remains unresolved.
-The challenge prompt asks for an independent analysis before comparing the prior
-conclusion; it is not a statistically independent benchmark.
+Mechanical validation checks IDs, citations and decision fields. It cannot
+prove security reasoning. High-impact findings and consequential safe or
+non-applicable dismissals get a challenge under the new policy; old runs keep
+their original challenge policy. Material disagreement remains unresolved.
 
-## Bounded evidence feedback
+Supported evidence requests: `read_source` (bounded path/line range),
+`find_symbol` (literal fallback), `find_definition`, `find_references`,
+`find_callers` (modeled call sites), `trace_flow` and `slice` (stored evidence at
+an anchor). No arbitrary shell, external paths, network, compiler, or new audit
+target. Empty native evidence is not proof of absence. The host caps excerpts,
+rounds, and packet size. Evidence is persisted before a follow-up; accepted
+decisions are persisted independently. Provider errors halt new launches.
 
-Only an unresolved response may request further evidence. The host supports:
-
-- `read_source`: relative file path plus bounded first/last lines from the same
-  pinned inventory.
-- `find_symbol`: literal string lookup within that inventory, with a bounded
-  number of returned excerpts and explicit truncation.
-
-No model-supplied shell, regex program, external path, dependency checkout,
-network operation, compiler call, or new audit target is accepted. At most three
-requests per candidate response are allowed. More than the configured evidence
-round limit yields an unresolved disposition. Rejected requests are recorded.
-The next ASM call receives only the affected groups and additional evidence.
-
-The run budget counts calls, not promised dollar cost. Actual provider token and
-cost metadata are stored where exposed. Model outputs vary between executions.
-Reproducibility means frozen inputs, replayable evidence and stored decisions,
-not identical new model judgments.
+One cumulative call reservation budget is shared across repositories within a
+run, including challenges and follow-up calls. Default concurrency is one. The
+budget is not a dollar/token guarantee. Observed usage is reported only when
+provided by ASM; missing values remain unknown. Do not start several independent
+runs to get around quotas. `--reconsider` explicitly archives and reopens
+unresolved or disputed decisions, subject to the remaining call budget.
