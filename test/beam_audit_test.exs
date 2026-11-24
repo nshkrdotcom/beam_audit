@@ -249,6 +249,11 @@ defmodule BeamAuditTest do
     assert {:error, _} =
              Review.validate(Map.put(decision, "evidence_refs", ["fabricated-id"]), packet)
 
+    [ref | _] = decision["evidence_refs"]
+
+    assert {:error, "Unknown or duplicate evidence reference"} =
+             Review.validate(Map.put(decision, "evidence_refs", [ref, ref]), packet)
+
     assert {:error, _} =
              Review.validate(Map.put(decision, "candidate_id", "other-candidate"), packet)
 
@@ -302,6 +307,7 @@ defmodule BeamAuditTest do
     [accepted] = Path.wildcard(Path.join([run, "r001", "decisions", "*.json"]))
     bytes = File.read!(accepted)
     accepted_id = Path.basename(accepted, ".json")
+    [contested_id] = Store.read(Path.join([run, "calls", "2.json"]))["candidates"]
     {:ok, partial} = BeamAudit.report(run)
     assert partial.pending > 0
     :atomics.put(counter, 1, Run.call_count(run))
@@ -314,7 +320,18 @@ defmodule BeamAuditTest do
                if String.contains?(prompt, accepted_id),
                  do: send(owner, {:resubmitted, accepted_id})
 
-               reviewer.(prompt, schema, settings, run)
+               {:ok, %{"results" => [decision]}, metadata} =
+                 reviewer.(prompt, schema, settings, run)
+
+               decision =
+                 if decision["candidate_id"] == contested_id and
+                      not String.contains?(prompt, ~s("prior_decision")) do
+                   Map.merge(decision, %{"disposition" => "potential", "severity" => "high"})
+                 else
+                   decision
+                 end
+
+               {:ok, %{"results" => [decision]}, metadata}
              end)
 
     refute_received {:resubmitted, ^accepted_id}
@@ -325,6 +342,11 @@ defmodule BeamAuditTest do
     assert finished.unresolved > 0
     assert finished.status == "partial_or_unresolved"
     original = File.read!(finished.report)
+    assert original =~ "Review disagreement:"
+
+    assert Review.record(run, "r001", "challenges", contested_id)["decision"]["disposition"] ==
+             "unresolved"
+
     assert {:ok, _} = BeamAudit.report(run)
     assert original == File.read!(finished.report)
     # An accepted record cannot cite source that was not captured in its packet.
