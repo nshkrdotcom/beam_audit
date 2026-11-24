@@ -29,12 +29,12 @@
     </pattern>
     <g id="node"><circle r="4.2" fill="#10233b" stroke="#5facc9" stroke-width=".8"/><circle r="1.65" fill="#b9fff0"/></g>
     <g id="wing" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M17 76H29L45 60H62L77 74M17 101H34L47 88H61M16 123H36L48 112H61M16 147H29L48 165H63L77 151M31 178V188L51 199H67" stroke="#427da2" stroke-width="1.1"/>
-      <path d="M29 76V63L39 53M34 101V112M36 123V140L47 151M48 165V181L60 188M51 199 60 208" stroke="#527ba4" stroke-width=".6"/>
+      <path d="M17 76H29L45 60H62L77 74M17 101H34L47 88H61M16 123H36L48 112H61M16 147H29L48 165H63L77 151M36 171V178L56 189H69" stroke="#427da2" stroke-width="1.1"/>
+      <path d="M29 76V63L39 53M34 101V112M36 123V140L47 151M48 165V181L60 188M56 189 65 198" stroke="#527ba4" stroke-width=".6"/>
       <path d="M17 76H29L45 60H62M16 123H36L48 112H61M48 165H63L77 151" stroke="#9bede0" stroke-width=".75" opacity=".7"/>
-      <use href="#node" x="17" y="76"/><use href="#node" x="34" y="101"/><use href="#node" x="16" y="123"/><use href="#node" x="48" y="165"/><use href="#node" x="51" y="199"/>
-      <circle cx="39" cy="53" r="2" fill="#b3a3f2"/><circle cx="47" cy="151" r="1.7" fill="#7ddfdf"/><circle cx="60" cy="208" r="1.8" fill="#d6ba7f"/>
-      <path d="M10 92H20M10 96H16M10 138H20M10 142H16M37 38 44 34M41 43 48 39M48 193 42 190" stroke="#b5b0ef" stroke-width=".7" opacity=".65"/>
+      <use href="#node" x="17" y="76"/><use href="#node" x="34" y="101"/><use href="#node" x="16" y="123"/><use href="#node" x="48" y="165"/><use href="#node" x="56" y="189"/>
+      <circle cx="39" cy="53" r="2" fill="#b3a3f2"/><circle cx="47" cy="151" r="1.7" fill="#7ddfdf"/><circle cx="65" cy="198" r="1.8" fill="#d6ba7f"/>
+      <path d="M10 92H20M10 96H16M10 138H20M10 142H16M42 46 49 42M45 50 52 46M51 185 45 182" stroke="#b5b0ef" stroke-width=".7" opacity=".65"/>
     </g>
   </defs>
   <g clip-path="url(#frame)">
