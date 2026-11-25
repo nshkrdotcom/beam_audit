@@ -26,6 +26,8 @@ defmodule BeamAudit.MixProject do
 
   defp deps do
     [
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_ast, "~> 0.12.10"},
       {:reach, "~> 2.8.4"},
       {:sobelow, "~> 0.19.0"},
