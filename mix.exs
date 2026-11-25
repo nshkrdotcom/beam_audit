@@ -13,6 +13,7 @@ defmodule BeamAudit.MixProject do
       elixir: "~> 1.20",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
+      dialyzer: [plt_add_apps: [:mix]],
       name: "BeamAudit",
       description: @description,
       source_url: @source_url,

@@ -111,35 +111,8 @@ defmodule BeamAudit.RunStorage do
 
       cutoff = if age, do: System.os_time(:second) - age * 86_400
 
-      {selected, skipped} =
-        Enum.reduce(rows, {[], []}, fn row, {selected, skipped} ->
-          reason =
-            cond do
-              not row.recognized -> "unrecognized"
-              row.locked -> "busy_or_stale_guard"
-              MapSet.member?(protected, row.id) -> "keep_newest"
-              cutoff && row.created_unix >= cutoff -> "not_old_enough"
-              not include_partial and row.status != @complete -> "partial_or_unreported"
-              true -> nil
-            end
-
-          if reason,
-            do: {selected, [%{id: row.id, reason: reason} | skipped]},
-            else: {[row | selected], skipped}
-        end)
-
-      # Oldest first; a failed deletion never hides other successful deletions.
-      {deleted, errors} =
-        if confirm do
-          Enum.reduce(selected, {[], []}, fn row, {deleted, errors} ->
-            case Store.safe(fn -> remove(row, include_partial) end) do
-              {:ok, _} -> {[row.id | deleted], errors}
-              {:error, reason} -> {deleted, [%{id: row.id, reason: reason} | errors]}
-            end
-          end)
-        else
-          {[], []}
-        end
+      {selected, skipped} = select_runs(rows, protected, cutoff, include_partial)
+      {deleted, errors} = apply_prune(selected, include_partial, confirm)
 
       result(
         parent,
@@ -150,6 +123,43 @@ defmodule BeamAudit.RunStorage do
         Enum.reverse(errors)
       )
     end)
+  end
+
+  defp select_runs(rows, protected, cutoff, include_partial) do
+    Enum.reduce(rows, {[], []}, fn row, {selected, skipped} ->
+      reason = skip_reason(row, protected, cutoff, include_partial)
+
+      if reason,
+        do: {selected, [%{id: row.id, reason: reason} | skipped]},
+        else: {[row | selected], skipped}
+    end)
+  end
+
+  defp skip_reason(row, protected, cutoff, include_partial) do
+    cond do
+      not row.recognized -> "unrecognized"
+      row.locked -> "busy_or_stale_guard"
+      MapSet.member?(protected, row.id) -> "keep_newest"
+      cutoff && row.created_unix >= cutoff -> "not_old_enough"
+      not include_partial and row.status != @complete -> "partial_or_unreported"
+      true -> nil
+    end
+  end
+
+  # Oldest first; a failed deletion never hides other successful deletions.
+  defp apply_prune(_selected, _include_partial, false), do: {[], []}
+
+  defp apply_prune(selected, include_partial, true) do
+    Enum.reduce(selected, {[], []}, fn row, {deleted, errors} ->
+      prune_row(row, include_partial, deleted, errors)
+    end)
+  end
+
+  defp prune_row(row, include_partial, deleted, errors) do
+    case Store.safe(fn -> remove(row, include_partial) end) do
+      {:ok, _} -> {[row.id | deleted], errors}
+      {:error, reason} -> {deleted, [%{id: row.id, reason: reason} | errors]}
+    end
   end
 
   defp result(parent, confirm, selected, deleted, skipped, errors) do
@@ -237,10 +247,7 @@ defmodule BeamAudit.RunStorage do
            "rules_sha256" => rules_hash,
            "prompts_sha256" => prompts
          } <- manifest,
-         true <-
-           schema == Run.schema() and is_binary(created) and is_list(repositories) and
-             repositories != [] and Enum.all?(repositories, &is_map/1) and is_map(settings) and
-             is_binary(rules_hash) and is_map(prompts),
+         true <- valid_manifest?(schema, created, repositories, settings, rules_hash, prompts),
          {:ok, timestamp, _} <- DateTime.from_iso8601(created) do
       summary = record(Path.join(run, "summary.json"))
 
@@ -285,6 +292,12 @@ defmodule BeamAudit.RunStorage do
     end
   end
 
+  defp valid_manifest?(schema, created, repositories, settings, rules_hash, prompts) do
+    schema == Run.schema() and is_binary(created) and is_list(repositories) and
+      repositories != [] and Enum.all?(repositories, &is_map/1) and is_map(settings) and
+      is_binary(rules_hash) and is_map(prompts)
+  end
+
   # Read only regular metadata files, not symlink targets or special files.
   defp record(path) do
     with {:ok, %{type: :regular}} <- File.lstat(path),
@@ -306,19 +319,23 @@ defmodule BeamAudit.RunStorage do
         {bytes, true}
 
       {:ok, %{type: :directory}} ->
-        case File.ls(path) do
-          {:ok, names} ->
-            Enum.reduce(names, {0, true}, fn name, {total, complete} ->
-              {bytes, readable} = size(Path.join(path, name))
-              {total + bytes, complete and readable}
-            end)
-
-          {:error, _} ->
-            {0, false}
-        end
+        directory_size(path)
 
       {:ok, _} ->
         {0, true}
+
+      {:error, _} ->
+        {0, false}
+    end
+  end
+
+  defp directory_size(path) do
+    case File.ls(path) do
+      {:ok, names} ->
+        Enum.reduce(names, {0, true}, fn name, {total, complete} ->
+          {bytes, readable} = size(Path.join(path, name))
+          {total + bytes, complete and readable}
+        end)
 
       {:error, _} ->
         {0, false}

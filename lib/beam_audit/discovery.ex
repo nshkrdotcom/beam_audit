@@ -116,19 +116,7 @@ defmodule BeamAudit.Discovery do
       path = Path.join([run, repo, "raw", "git-#{rule["id"]}.txt"])
       Store.atomic(path, out)
 
-      result =
-        if status in [0, 1] do
-          Store.safe(fn ->
-            out
-            |> String.split("\n", trim: true)
-            |> Enum.map(fn row ->
-              [file, line, snippet] = :binary.split(row, <<0>>, [:global])
-              hit("git", rule["id"], file, String.to_integer(line), 1, snippet, rule["bucket"])
-            end)
-          end)
-        else
-          {:error, "Git grep exit #{status}"}
-        end
+      result = grep_hits(out, status, rule)
 
       case result do
         {:ok, hits} ->
@@ -152,6 +140,19 @@ defmodule BeamAudit.Discovery do
       {all ++ hits, states ++ [state]}
     end)
   end
+
+  defp grep_hits(out, status, rule) when status in [0, 1] do
+    Store.safe(fn ->
+      out
+      |> String.split("\n", trim: true)
+      |> Enum.map(fn row ->
+        [file, line, snippet] = :binary.split(row, <<0>>, [:global])
+        hit("git", rule["id"], file, String.to_integer(line), 1, snippet, rule["bucket"])
+      end)
+    end)
+  end
+
+  defp grep_hits(_out, status, _rule), do: {:error, "Git grep exit #{status}"}
 
   defp structural(run, repo, files, rules) do
     {:ok, _} = Application.ensure_all_started(:ex_ast)
@@ -180,50 +181,8 @@ defmodule BeamAudit.Discovery do
     elixir_files = Enum.filter(files, &(Path.extname(&1["path"]) in [".ex", ".exs"]))
 
     {hits, spans, definitions, errors} =
-      Enum.reduce(elixir_files, {[], %{}, [], []}, fn file, {hits, spans, definitions, errors} ->
-        result =
-          Store.safe(fn ->
-            source = Scope.source!(run, repo, file)
-
-            ExAST.Patcher.find_many(source, patterns, expand_imports: false)
-            |> Enum.map(fn match ->
-              range = match.range || raise("ExAST match has no source range")
-              first = Keyword.fetch!(range.start, :line)
-              last = Keyword.fetch!(range.end, :line)
-              column = Keyword.get(range.start, :column, 1)
-              {to_string(match.pattern), first, last, column, match.source || "", match.node}
-            end)
-          end)
-
-        case result do
-          {:ok, matches} ->
-            {contexts, findings} =
-              Enum.split_with(matches, &String.starts_with?(elem(&1, 0), "context:"))
-
-            defs = definitions(contexts, file["path"])
-            ranges = Enum.map(defs, &{&1["first"], &1["last"]})
-
-            current =
-              Enum.map(findings, fn {pattern, first, _last, col, snippet, _node} ->
-                [rule, _] = String.split(pattern, ":", parts: 2)
-
-                hit(
-                  "ex_ast",
-                  rule,
-                  file["path"],
-                  first,
-                  col,
-                  snippet,
-                  Enum.find(rules, &(&1["id"] == rule))["bucket"]
-                )
-                |> Map.put("query", pattern)
-              end)
-
-            {current ++ hits, Map.put(spans, file["path"], ranges), definitions ++ defs, errors}
-
-          {:error, reason} ->
-            {hits, spans, definitions, [%{"path" => file["path"], "reason" => reason} | errors]}
-        end
+      Enum.reduce(elixir_files, {[], %{}, [], []}, fn file, acc ->
+        structural_file(run, repo, file, patterns, rules, acc)
       end)
 
     Store.write_lines(Path.join([run, repo, "raw", "ex_ast.jsonl"]), Enum.reverse(hits))
@@ -239,6 +198,56 @@ defmodule BeamAudit.Discovery do
      })}
   end
 
+  defp structural_file(run, repo, file, patterns, rules, {hits, spans, definitions, errors}) do
+    result =
+      Store.safe(fn ->
+        source = Scope.source!(run, repo, file)
+
+        ExAST.Patcher.find_many(source, patterns, expand_imports: false)
+        |> Enum.map(fn match ->
+          range = match.range || raise("ExAST match has no source range")
+          first = Keyword.fetch!(range.start, :line)
+          last = Keyword.fetch!(range.end, :line)
+          column = Keyword.get(range.start, :column, 1)
+          {to_string(match.pattern), first, last, column, match.source || "", match.node}
+        end)
+      end)
+
+    case result do
+      {:ok, matches} ->
+        {contexts, findings} =
+          Enum.split_with(matches, &String.starts_with?(elem(&1, 0), "context:"))
+
+        defs = definitions(contexts, file["path"])
+        ranges = Enum.map(defs, &{&1["first"], &1["last"]})
+
+        current =
+          structural_hits(findings, file["path"], rules)
+
+        {current ++ hits, Map.put(spans, file["path"], ranges), definitions ++ defs, errors}
+
+      {:error, reason} ->
+        {hits, spans, definitions, [%{"path" => file["path"], "reason" => reason} | errors]}
+    end
+  end
+
+  defp structural_hits(findings, path, rules) do
+    Enum.map(findings, fn {pattern, first, _last, col, snippet, _node} ->
+      [rule, _] = String.split(pattern, ":", parts: 2)
+
+      hit(
+        "ex_ast",
+        rule,
+        path,
+        first,
+        col,
+        snippet,
+        Enum.find(rules, &(&1["id"] == rule))["bucket"]
+      )
+      |> Map.put("query", pattern)
+    end)
+  end
+
   # Native match ranges and AST nodes, not a new source parser. Module names are
   # lexical source names (not guaranteed resolved MFAs for generated modules).
   defp definitions(contexts, path) do
@@ -247,39 +256,17 @@ defmodule BeamAudit.Discovery do
     contexts
     |> Enum.reject(&(elem(&1, 0) == "context:module"))
     |> Enum.map(fn {kind, first, last, _, snippet, node} ->
-      head =
-        case node do
-          {form, _, [head | _]} when form in [:def, :defp] -> head
-          _ -> nil
-        end
-
-      head =
-        case head do
-          {:when, _, [call | _]} -> call
-          other -> other
-        end
-
-      {name, arity} =
-        case head do
-          {name, _, args} when is_atom(name) and is_list(args) ->
-            {Atom.to_string(name), length(args)}
-
-          {name, _, nil} when is_atom(name) ->
-            {Atom.to_string(name), 0}
-
-          _ ->
-            {nil, nil}
-        end
+      head = definition_head(node)
+      {name, arity} = definition_name(head)
 
       mod =
         modules
         |> Enum.filter(fn {_, a, b, _, _, _} -> a <= first and b >= last end)
         |> Enum.sort_by(&elem(&1, 1))
-        |> Enum.map(fn
+        |> Enum.map_join(".", fn
           {_, _, _, _, _, {:defmodule, _, [module | _]}} -> Macro.to_string(module)
           _ -> "?"
         end)
-        |> Enum.join(".")
 
       %{
         "path" => path,
@@ -296,16 +283,22 @@ defmodule BeamAudit.Discovery do
     |> Enum.sort_by(&{&1["path"], &1["first"], &1["last"]})
   end
 
+  defp definition_head({form, _, [{:when, _, [call | _]} | _]}) when form in [:def, :defp],
+    do: call
+
+  defp definition_head({form, _, [head | _]}) when form in [:def, :defp], do: head
+  defp definition_head(_), do: nil
+
+  defp definition_name({name, _, args}) when is_atom(name) and is_list(args),
+    do: {Atom.to_string(name), length(args)}
+
+  defp definition_name({name, _, nil}) when is_atom(name), do: {Atom.to_string(name), 0}
+  defp definition_name(_), do: {nil, nil}
+
   @doc false
   def boundary_hits(native, definitions, identity) do
     context_rules = ~w(P08 P09 P10 P11 P12)
     sensitive_rules = ~w(P09 P10 P11)
-
-    callbacks =
-      ~w(handle_call handle_cast handle_info handle_event handle_in handle_continue handle_params perform)
-
-    entrypoints = ~w(dispatch execute invoke request connect resume)
-    authority = ~w(approve approve! authorize authorize!)
 
     context =
       native
@@ -323,67 +316,9 @@ defmodule BeamAudit.Discovery do
           end)
 
         properties = sites |> Enum.map(& &1["rule"]) |> Enum.uniq() |> Enum.sort()
-        name = defn["function"]
 
-        sensitive =
-          sites
-          |> Enum.filter(&(&1["rule"] in sensitive_rules))
-          |> Enum.group_by(& &1["rule"])
-          |> Enum.sort()
-          |> Enum.map(fn {rule, matches} ->
-            site = Enum.min_by(matches, &{&1["line"], &1["column"], &1["tool"]})
-
-            hit(
-              "boundary",
-              rule,
-              defn["path"],
-              site["line"],
-              site["column"],
-              site["snippet"],
-              "candidate"
-            )
-            |> Map.merge(%{
-              "boundary" => true,
-              "related_rules" => [rule],
-              "definition" => defn,
-              "question" =>
-                "Assess the sensitive operation, caller contract, validation and authority at this public boundary."
-            })
-          end)
-
-        inventory =
-          if name in callbacks or name in entrypoints or
-               name in authority or "P12" in properties do
-            explicit_authority = name in authority
-
-            row =
-              hit(
-                "boundary",
-                "P12",
-                defn["path"],
-                defn["first"],
-                1,
-                defn["signature"],
-                if(explicit_authority, do: "candidate", else: "context")
-              )
-              |> Map.merge(%{
-                "boundary" => true,
-                "related_rules" => Enum.uniq(["P12" | properties]),
-                "definition" => defn,
-                "question" =>
-                  "Assess the actual entrypoint, caller trust, state transition and authority contract."
-              })
-
-            if explicit_authority do
-              [row]
-            else
-              [Map.put(row, "reason", "entrypoint_inventory")]
-            end
-          else
-            []
-          end
-
-        sensitive ++ inventory
+        sensitive_boundaries(sites, defn, sensitive_rules) ++
+          entrypoint_boundary(defn, properties)
       end)
 
     requested =
@@ -407,6 +342,74 @@ defmodule BeamAudit.Discovery do
     generated ++ requested
   end
 
+  defp sensitive_boundaries(sites, defn, sensitive_rules) do
+    sites
+    |> Enum.filter(&(&1["rule"] in sensitive_rules))
+    |> Enum.group_by(& &1["rule"])
+    |> Enum.sort()
+    |> Enum.map(fn {rule, matches} ->
+      site = Enum.min_by(matches, &{&1["line"], &1["column"], &1["tool"]})
+
+      hit(
+        "boundary",
+        rule,
+        defn["path"],
+        site["line"],
+        site["column"],
+        site["snippet"],
+        "candidate"
+      )
+      |> Map.merge(%{
+        "boundary" => true,
+        "related_rules" => [rule],
+        "definition" => defn,
+        "question" =>
+          "Assess the sensitive operation, caller contract, validation and authority at this public boundary."
+      })
+    end)
+  end
+
+  defp entrypoint_boundary(defn, properties) do
+    callbacks =
+      ~w(handle_call handle_cast handle_info handle_event handle_in handle_continue handle_params perform)
+
+    entrypoints = ~w(dispatch execute invoke request connect resume)
+    authority = ~w(approve approve! authorize authorize!)
+
+    name = defn["function"]
+
+    if name in callbacks or name in entrypoints or
+         name in authority or "P12" in properties do
+      explicit_authority = name in authority
+
+      row =
+        hit(
+          "boundary",
+          "P12",
+          defn["path"],
+          defn["first"],
+          1,
+          defn["signature"],
+          if(explicit_authority, do: "candidate", else: "context")
+        )
+        |> Map.merge(%{
+          "boundary" => true,
+          "related_rules" => Enum.uniq(["P12" | properties]),
+          "definition" => defn,
+          "question" =>
+            "Assess the actual entrypoint, caller trust, state transition and authority contract."
+        })
+
+      if explicit_authority do
+        [row]
+      else
+        [Map.put(row, "reason", "entrypoint_inventory")]
+      end
+    else
+      []
+    end
+  end
+
   defp sobelow(run, repo, inventory) do
     root = Scope.snapshot_dir(run, repo)
     paths = Scope.included(inventory) |> Enum.map(& &1["path"])
@@ -418,85 +421,97 @@ defmodule BeamAudit.Discovery do
     # Exclude the dependency advisory category. Do not load target .sobelow-conf.
     app_roots
     |> Enum.with_index(1)
-    |> Enum.map(fn {app, index} ->
-      target = Path.expand(app, root)
-
-      args = [
-        "--root",
-        target,
-        "--private",
-        "--no-config",
-        "--no-router",
-        "--strict",
-        "--summary",
-        "--format",
-        "sarif",
-        "--include-mix-tasks",
-        "--include-scripts",
-        "--ignore",
-        "Vuln"
-      ]
-
-      if not Enum.any?(paths, fn path ->
-           String.starts_with?(path, if(app == ".", do: "lib/", else: app <> "/lib/"))
-         end) do
-        {[],
-         status("sobelow:#{app}", "partial", %{
-           "reason" => "No lib source; not a supported application layout",
-           "args" => args
-         })}
-      else
-        stderr_path = Path.join([run, repo, "raw", "sobelow-#{index}.stderr.log"])
-
-        result =
-          Store.safe(fn ->
-            expression =
-              "Mix.start(); {:ok, _} = Application.ensure_all_started(:sobelow); Mix.Tasks.Sobelow.main(System.argv())"
-
-            Store.worker(expression, args, run, stderr_path)
-          end)
-
-        case result do
-          {:ok, {out, exit_code}} ->
-            Store.atomic(Path.join([run, repo, "raw", "sobelow-#{index}.sarif.log"]), out)
-            diagnostics = File.read!(stderr_path)
-
-            decoded =
-              if exit_code == 0,
-                do: Store.safe(fn -> sarif(out, target, root) end),
-                else: {:error, "exit #{exit_code}; see #{Path.basename(stderr_path)}"}
-
-            case decoded do
-              {:ok, hits} ->
-                {hits,
-                 status("sobelow:#{app}", "completed", %{
-                   "matches" => length(hits),
-                   "args" => args,
-                   "exit" => exit_code,
-                   "scan_summary" =>
-                     diagnostics
-                     |> String.split("\n")
-                     |> Enum.find(&String.starts_with?(&1, "Scan summary: ")),
-                   "scope" => "Sobelow-supported paths only; Vuln category excluded"
-                 })}
-
-              {:error, reason} ->
-                {[],
-                 status("sobelow:#{app}", "failed", %{
-                   "reason" => reason,
-                   "args" => args,
-                   "exit" => exit_code
-                 })}
-            end
-
-          {:error, reason} ->
-            {[], status("sobelow:#{app}", "unavailable", %{"reason" => reason})}
-        end
-      end
-    end)
+    |> Enum.map(fn {app, index} -> sobelow_app(run, repo, root, paths, app, index) end)
     |> Enum.reduce({[], []}, fn {hits, state}, {all, states} ->
       {all ++ hits, states ++ [state]}
     end)
+  end
+
+  defp sobelow_app(run, repo, root, paths, app, index) do
+    target = Path.expand(app, root)
+
+    args = [
+      "--root",
+      target,
+      "--private",
+      "--no-config",
+      "--no-router",
+      "--strict",
+      "--summary",
+      "--format",
+      "sarif",
+      "--include-mix-tasks",
+      "--include-scripts",
+      "--ignore",
+      "Vuln"
+    ]
+
+    prefix = if app == ".", do: "lib/", else: app <> "/lib/"
+
+    if Enum.any?(paths, &String.starts_with?(&1, prefix)) do
+      run_sobelow(run, repo, root, app, index, target, args)
+    else
+      {[],
+       status("sobelow:#{app}", "partial", %{
+         "reason" => "No lib source; not a supported application layout",
+         "args" => args
+       })}
+    end
+  end
+
+  defp run_sobelow(run, repo, root, app, index, target, args) do
+    stderr_path = Path.join([run, repo, "raw", "sobelow-#{index}.stderr.log"])
+
+    result =
+      Store.safe(fn ->
+        expression =
+          "Mix.start(); {:ok, _} = Application.ensure_all_started(:sobelow); Mix.Tasks.Sobelow.main(System.argv())"
+
+        Store.worker(expression, args, run, stderr_path)
+      end)
+
+    case result do
+      {:ok, {out, exit_code}} ->
+        Store.atomic(Path.join([run, repo, "raw", "sobelow-#{index}.sarif.log"]), out)
+        diagnostics = File.read!(stderr_path)
+
+        decoded = decode_sobelow(out, exit_code, target, root, stderr_path)
+        sobelow_result(app, args, exit_code, diagnostics, decoded)
+
+      {:error, reason} ->
+        {[], status("sobelow:#{app}", "unavailable", %{"reason" => reason})}
+    end
+  end
+
+  defp decode_sobelow(out, 0, target, root, _stderr_path),
+    do: Store.safe(fn -> sarif(out, target, root) end)
+
+  defp decode_sobelow(_out, exit_code, _target, _root, stderr_path),
+    do: {:error, "exit #{exit_code}; see #{Path.basename(stderr_path)}"}
+
+  defp sobelow_result(app, args, exit_code, diagnostics, decoded) do
+    case decoded do
+      {:ok, hits} ->
+        {hits,
+         status("sobelow:#{app}", "completed", %{
+           "matches" => length(hits),
+           "args" => args,
+           "exit" => exit_code,
+           "scan_summary" =>
+             diagnostics
+             |> String.split("\n")
+             |> Enum.find(&String.starts_with?(&1, "Scan summary: ")),
+           "scope" => "Sobelow-supported paths only; Vuln category excluded"
+         })}
+
+      {:error, reason} ->
+        {[],
+         status("sobelow:#{app}", "failed", %{
+           "reason" => reason,
+           "args" => args,
+           "exit" => exit_code
+         })}
+    end
   end
 
   @doc false
@@ -526,9 +541,7 @@ defmodule BeamAudit.Discovery do
         "native_rule_name",
         Enum.find_value(
           get_in(run, ["tool", "driver", "rules"]) || [],
-          fn rule ->
-            if rule["id"] == result["ruleId"], do: rule["name"]
-          end
+          &(&1["id"] == result["ruleId"] && &1["name"])
         )
       )
     end
@@ -555,24 +568,25 @@ defmodule BeamAudit.Discovery do
 
   defp status(tool, value, details), do: Map.merge(%{"tool" => tool, "status" => value}, details)
 
+  @sobelow_properties %{
+    "Misc.BinToTerm" => "P01",
+    "DOS.BinToAtom" => "P07",
+    "DOS.StringToAtom" => "P07",
+    "DOS.ModuleConcat" => "P07",
+    "RCE.CodeModule" => "P05",
+    "RCE.EEx" => "P05",
+    "RCE.System" => "P05",
+    "CI.System" => "P05",
+    "SQL.Query" => "P06",
+    "Traversal.FileModule" => "P09"
+  }
+
   # Native IDs are retained on every row. Only exact known equivalent rules
   # share a property group; unrelated findings in a function stay separate.
   defp canonical_rule(%{"tool" => "sobelow", "rule" => rule} = row) do
     name = row["native_rule_name"] || String.replace_prefix(rule, "SOBELOW:", "")
 
-    case name do
-      "Misc.BinToTerm" -> "P01"
-      "DOS.BinToAtom" -> "P07"
-      "DOS.StringToAtom" -> "P07"
-      "DOS.ModuleConcat" -> "P07"
-      "RCE.CodeModule" -> "P05"
-      "RCE.EEx" -> "P05"
-      "RCE.System" -> "P05"
-      "CI.System" -> "P05"
-      "SQL.Query" -> "P06"
-      "Traversal.FileModule" -> "P09"
-      _ -> rule
-    end
+    Map.get(@sobelow_properties, name, rule)
   end
 
   defp canonical_rule(row), do: row["rule"]
@@ -586,49 +600,9 @@ defmodule BeamAudit.Discovery do
       )
       |> Enum.with_index(1)
       |> Enum.map(fn {hit, index} ->
-        row = Map.put(hit, "raw_id", "#{repo}:#{index}")
-
-        cond do
-          not Scope.location_valid?(inventory, row["path"], row["line"], row["line"]) ->
-            Map.merge(row, %{
-              "bucket" => "excluded",
-              "reason" => "out_of_scope_or_invalid_location"
-            })
-
-          row["bucket"] == "context" ->
-            Map.put_new(row, "reason", "context_only_policy")
-
-          true ->
-            {first, last} =
-              Map.get(spans, row["path"], [])
-              |> Enum.filter(fn {first, last} ->
-                first <= row["line"] and row["line"] <= last and last - first <= 90 and
-                  Scope.location_valid?(inventory, row["path"], first, last)
-              end)
-              |> Enum.min_by(fn {first, last} -> last - first end, fn ->
-                {row["line"], row["line"]}
-              end)
-
-            family = canonical_rule(row)
-
-            group =
-              Store.id([
-                identity["root"],
-                identity["commit"],
-                row["path"],
-                family,
-                first,
-                last
-              ])
-
-            Map.merge(row, %{
-              "bucket" => "queued",
-              "candidate_id" => group,
-              "family" => family,
-              "first" => first,
-              "last" => last
-            })
-        end
+        hit
+        |> Map.put("raw_id", "#{repo}:#{index}")
+        |> account_hit(spans, inventory, identity)
       end)
 
     groups =
@@ -679,5 +653,53 @@ defmodule BeamAudit.Discovery do
       |> Enum.sort_by(&{&1["path"], &1["first"], &1["rule"], &1["id"]})
 
     {rows, groups, Enum.filter(rows, &(&1["bucket"] == "excluded")) |> Enum.map(& &1["raw_id"])}
+  end
+
+  defp account_hit(row, spans, inventory, identity) do
+    cond do
+      not Scope.location_valid?(inventory, row["path"], row["line"], row["line"]) ->
+        Map.merge(row, %{
+          "bucket" => "excluded",
+          "reason" => "out_of_scope_or_invalid_location"
+        })
+
+      row["bucket"] == "context" ->
+        Map.put_new(row, "reason", "context_only_policy")
+
+      true ->
+        queue_hit(row, spans, inventory, identity)
+    end
+  end
+
+  defp queue_hit(row, spans, inventory, identity) do
+    {first, last} =
+      Map.get(spans, row["path"], [])
+      |> Enum.filter(fn {first, last} ->
+        first <= row["line"] and row["line"] <= last and last - first <= 90 and
+          Scope.location_valid?(inventory, row["path"], first, last)
+      end)
+      |> Enum.min_by(fn {first, last} -> last - first end, fn ->
+        {row["line"], row["line"]}
+      end)
+
+    family = canonical_rule(row)
+
+    group =
+      Store.id([
+        identity["root"],
+        identity["commit"],
+        row["path"],
+        family,
+        first,
+        last
+      ])
+
+    Map.merge(row, %{
+      "bucket" => "queued",
+      "candidate_id" => group,
+      "family" => family,
+      "first" => first,
+      "last" => last
+    })
   end
 end

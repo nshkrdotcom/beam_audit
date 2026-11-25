@@ -1,5 +1,5 @@
-# Source-only positive and benign controls. Never compiled or executed.
 defmodule AuditFixture do
+  @moduledoc "Source-only positive and benign controls. Never compiled or executed."
   def decode(input), do: :erlang.binary_to_term(input, [:safe])
   def decode_pipe(input), do: input |> :erlang.binary_to_term([:safe])
   def decode_nonexec(input), do: Plug.Crypto.non_executable_binary_to_term(input, [:safe])

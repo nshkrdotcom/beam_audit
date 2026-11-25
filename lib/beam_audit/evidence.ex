@@ -14,47 +14,62 @@ defmodule BeamAudit.Evidence do
   def analyze(run, repo, files, catalogue, candidate_hits) do
     # Reach's Erlang frontend uses EPP, which can read includes outside the snapshot.
     source_files = Enum.filter(files, &(Path.extname(&1["path"]) in ~w(.ex .exs)))
+
+    if source_files == [] do
+      {[], %{"tool" => "reach", "status" => "partial", "reason" => "No supported source files"}}
+    else
+      analyze_paths(run, repo, files, source_files, catalogue, candidate_hits)
+    end
+  end
+
+  defp analyze_paths(run, repo, files, source_files, catalogue, candidate_hits) do
     root = Scope.snapshot_dir(run, repo)
     paths = Enum.map(source_files, &Path.join(root, &1["path"]))
 
-    if paths == [] do
-      {[], %{"tool" => "reach", "status" => "partial", "reason" => "No supported source files"}}
-    else
-      case Store.safe(fn -> project_flows(paths, root, files, catalogue, candidate_hits) end) do
-        {:ok, {flows, represented, count, symbols, slices, slice_errors}} ->
-          Store.write_lines(Path.join([run, repo, "symbols.jsonl"]), symbols)
-          Store.write_lines(Path.join([run, repo, "slices.jsonl"]), slices)
-          missing = Enum.map(source_files, & &1["path"]) -- represented
-          unmodeled = Enum.map(files -- source_files, & &1["path"])
+    case Store.safe(fn -> project_flows(paths, root, files, catalogue, candidate_hits) end) do
+      {:ok, analysis} ->
+        save_analysis(run, repo, files, source_files, analysis)
 
-          status =
-            if missing == [] and count <= @max_flows and unmodeled == [] and slice_errors == [],
-              do: "completed",
-              else: "partial"
-
-          {flows,
-           %{
-             "tool" => "reach",
-             "status" => status,
-             "submitted" => length(paths),
-             "represented" => length(represented),
-             "unrepresented_files" => missing,
-             "unmodeled_extensions" => unmodeled,
-             "paths_reported" => length(flows),
-             "nontrivial_paths_reported" => Enum.count(flows, &nontrivial_flow?/1),
-             "zero_length_paths_reported" => Enum.count(flows, &(not nontrivial_flow?(&1))),
-             "paths_total" => count,
-             "slice_errors" => slice_errors,
-             "symbol_count" => length(symbols),
-             "slice_count" => length(slices),
-             "scope" =>
-               "Elixir source graph only; Erlang includes, target dependency summaries and macro expansion are outside scope"
-           }}
-
-        {:error, reason} ->
-          {[], %{"tool" => "reach", "status" => "failed", "reason" => reason}}
-      end
+      {:error, reason} ->
+        {[], %{"tool" => "reach", "status" => "failed", "reason" => reason}}
     end
+  end
+
+  defp save_analysis(
+         run,
+         repo,
+         files,
+         source_files,
+         {flows, represented, count, symbols, slices, slice_errors}
+       ) do
+    Store.write_lines(Path.join([run, repo, "symbols.jsonl"]), symbols)
+    Store.write_lines(Path.join([run, repo, "slices.jsonl"]), slices)
+    missing = Enum.map(source_files, & &1["path"]) -- represented
+    unmodeled = Enum.map(files -- source_files, & &1["path"])
+
+    status =
+      if missing == [] and count <= @max_flows and unmodeled == [] and slice_errors == [],
+        do: "completed",
+        else: "partial"
+
+    {flows,
+     %{
+       "tool" => "reach",
+       "status" => status,
+       "submitted" => length(source_files),
+       "represented" => length(represented),
+       "unrepresented_files" => missing,
+       "unmodeled_extensions" => unmodeled,
+       "paths_reported" => length(flows),
+       "nontrivial_paths_reported" => Enum.count(flows, &nontrivial_flow?/1),
+       "zero_length_paths_reported" => Enum.count(flows, &(not nontrivial_flow?(&1))),
+       "paths_total" => count,
+       "slice_errors" => slice_errors,
+       "symbol_count" => length(symbols),
+       "slice_count" => length(slices),
+       "scope" =>
+         "Elixir source graph only; Erlang includes, target dependency summaries and macro expansion are outside scope"
+     }}
   end
 
   defp project_flows(paths, root, inventory, catalogue, candidate_hits) do
@@ -80,48 +95,65 @@ defmodule BeamAudit.Evidence do
       |> Enum.uniq()
       |> Enum.sort_by(&JSON.encode!/1)
 
+    flows = modeled_flows(project, catalogue, root, inventory, locations)
+    {nontrivial, coincident} = Enum.split_with(flows, &nontrivial_flow?/1)
+    selected = Enum.take(nontrivial ++ coincident, @max_flows)
+    {slices, errors} = capture_slices(project, locations, candidate_hits, selected)
+
+    {selected, represented, length(flows), symbols, Enum.reverse(slices), Enum.reverse(errors)}
+  end
+
+  defp modeled_flows(project, catalogue, root, inventory, locations) do
     profiles = catalogue["flow_profiles"] || []
     sources = catalogue["flow_sources"] || %{}
 
     # One graph, one native taint query per source family, not per candidate.
-    flows =
-      profiles
-      |> Enum.group_by(& &1["source"])
-      |> Enum.sort()
-      |> Enum.flat_map(fn {family, specs} ->
-        source_calls = Map.fetch!(sources, family)
-        sink_calls = Enum.flat_map(specs, & &1["sinks"]) |> Enum.uniq()
+    profiles
+    |> Enum.group_by(& &1["source"])
+    |> Enum.sort()
+    |> Enum.flat_map(fn {family, specs} ->
+      flow_family(project, Map.fetch!(sources, family), specs, root, inventory, locations)
+    end)
+    |> Enum.uniq()
+    |> Enum.sort_by(&JSON.encode!/1)
+  end
 
-        results =
-          Reach.Project.taint_analysis(project,
-            sources: fn n -> matches_call?(n, source_calls) end,
-            sinks: fn n -> matches_call?(n, sink_calls) end
+  defp flow_family(project, source_calls, specs, root, inventory, locations) do
+    sink_calls = Enum.flat_map(specs, & &1["sinks"]) |> Enum.uniq()
+
+    results =
+      Reach.Project.taint_analysis(project,
+        sources: fn n -> matches_call?(n, source_calls) end,
+        sinks: fn n -> matches_call?(n, sink_calls) end
+      )
+
+    Enum.flat_map(results, fn flow ->
+      project_flow(flow, specs, root, inventory, locations)
+    end)
+  end
+
+  defp project_flow(flow, specs, root, inventory, locations) do
+    specs
+    |> Enum.filter(&matches_call?(flow.sink, &1["sinks"]))
+    |> Enum.map(fn spec ->
+      %{
+        "rule" => spec["rule"],
+        "source" => location(flow.source, root, inventory),
+        "sink" => location(flow.sink, root, inventory),
+        "path" => Enum.take(flow.path, 120) |> Enum.map(&Map.get(locations, &1)),
+        "path_truncated" => length(flow.path) > 120,
+        "kind" =>
+          if(flow.path == [],
+            do: "coincident_source_sink",
+            else: "modeled_data_flow"
           )
+      }
+    end)
+  end
 
-        Enum.flat_map(results, fn flow ->
-          specs
-          |> Enum.filter(&matches_call?(flow.sink, &1["sinks"]))
-          |> Enum.map(fn spec ->
-            %{
-              "rule" => spec["rule"],
-              "source" => location(flow.source, root, inventory),
-              "sink" => location(flow.sink, root, inventory),
-              "path" => Enum.take(flow.path, 120) |> Enum.map(&Map.get(locations, &1)),
-              "path_truncated" => length(flow.path) > 120,
-              "kind" =>
-                if(flow.path == [],
-                  do: "coincident_source_sink",
-                  else: "modeled_data_flow"
-                )
-            }
-          end)
-        end)
-      end)
-      |> Enum.uniq()
-      |> Enum.sort_by(&JSON.encode!/1)
+  defp capture_slices(project, locations, candidate_hits, selected) do
+    nodes = project.nodes
 
-    {nontrivial, coincident} = Enum.split_with(flows, &nontrivial_flow?/1)
-    selected = Enum.take(nontrivial ++ coincident, @max_flows)
     # Persist native slices around candidate locations while the graph exists.
     # Later evidence requests never rebuild the project or run arbitrary tools.
     anchors =
@@ -164,29 +196,7 @@ defmodule BeamAudit.Evidence do
       targets
       |> Enum.take(500)
       |> Enum.reduce({[], []}, fn {id, _node}, {slices, errors} ->
-        target = Map.fetch!(locations, id)
-
-        case Store.safe(fn -> Reach.context_sensitive_slice(sdg, id) end) do
-          {:ok, ids} ->
-            locs =
-              ids
-              |> Enum.map(&Map.get(locations, &1))
-              |> Enum.reject(&is_nil/1)
-              |> Enum.uniq()
-              |> Enum.sort_by(&JSON.encode!/1)
-
-            {[
-               %{
-                 "target" => target,
-                 "locations" => Enum.take(locs, 100),
-                 "truncated" => length(locs) > 100
-               }
-               | slices
-             ], errors}
-
-          {:error, reason} ->
-            {slices, [%{"target" => target, "reason" => reason} | errors]}
-        end
+        capture_slice(sdg, id, locations, slices, errors)
       end)
 
     errors =
@@ -196,7 +206,33 @@ defmodule BeamAudit.Evidence do
         ],
         else: errors
 
-    {selected, represented, length(flows), symbols, Enum.reverse(slices), Enum.reverse(errors)}
+    {slices, errors}
+  end
+
+  defp capture_slice(sdg, id, locations, slices, errors) do
+    target = Map.fetch!(locations, id)
+
+    case Store.safe(fn -> Reach.context_sensitive_slice(sdg, id) end) do
+      {:ok, ids} ->
+        locs =
+          ids
+          |> Enum.map(&Map.get(locations, &1))
+          |> Enum.reject(&is_nil/1)
+          |> Enum.uniq()
+          |> Enum.sort_by(&JSON.encode!/1)
+
+        {[
+           %{
+             "target" => target,
+             "locations" => Enum.take(locs, 100),
+             "truncated" => length(locs) > 100
+           }
+           | slices
+         ], errors}
+
+      {:error, reason} ->
+        {slices, [%{"target" => target, "reason" => reason} | errors]}
+    end
   end
 
   defp matches_call?(nil, _), do: false
@@ -281,13 +317,7 @@ defmodule BeamAudit.Evidence do
 
     relevant =
       flows
-      |> Enum.filter(&nontrivial_flow?/1)
-      |> Enum.filter(fn flow ->
-        Enum.any?([flow["source"], flow["sink"] | flow["path"]], fn
-          %{"path" => ^path, "line" => line} -> line >= group["first"] and line <= group["last"]
-          _ -> false
-        end)
-      end)
+      |> Enum.filter(&(nontrivial_flow?(&1) and flow_in_group?(&1, group)))
 
     selected = Enum.take(relevant, 12)
 
@@ -297,27 +327,9 @@ defmodule BeamAudit.Evidence do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.take(8)
-      |> Enum.flat_map(fn loc ->
-        case Scope.lookup(inventory, loc["path"]) do
-          nil ->
-            []
-
-          entry ->
-            case Store.safe(fn ->
-                   excerpt(
-                     run,
-                     group["repo"],
-                     inventory,
-                     loc["path"],
-                     max(1, loc["line"] - 5),
-                     min(entry["lines"], loc["line"] + 5)
-                   )
-                 end) do
-              {:ok, item} -> [item]
-              {:error, _} -> []
-            end
-        end
-      end)
+      |> Enum.flat_map(
+        &nearby_excerpt(run, group["repo"], inventory, &1["path"], &1["line"], 5, 5)
+      )
 
     properties = group["properties"] || [group["rule"]]
 
@@ -396,106 +408,7 @@ defmodule BeamAudit.Evidence do
     if length(requests) > 3, do: raise("Too many evidence requests")
     repo = packet["candidate"]["repo"]
 
-    answers =
-      Enum.map(requests, fn request ->
-        case request do
-          %{"operation" => "read_source", "path" => path, "first" => first, "last" => last} ->
-            %{
-              "request" => request,
-              "excerpts" => [excerpt(run, repo, inventory, path, first, last)],
-              "truncated" => false
-            }
-
-          %{"operation" => "find_symbol", "symbol" => symbol} when is_binary(symbol) ->
-            unless byte_size(symbol) in 2..160 and
-                     not String.contains?(symbol, ["\n", "\r", <<0>>]),
-                   do: raise("Invalid literal symbol")
-
-            matches =
-              Scope.included(inventory)
-              |> Enum.flat_map(fn entry ->
-                Scope.source!(run, repo, entry)
-                |> String.split("\n")
-                |> Enum.with_index(1)
-                |> Enum.filter(fn {line, _} -> String.contains?(line, symbol) end)
-                |> Enum.map(fn {_, line} -> {entry, line} end)
-              end)
-
-            items =
-              Enum.take(matches, 8)
-              |> Enum.map(fn {entry, line} ->
-                excerpt(
-                  run,
-                  repo,
-                  inventory,
-                  entry["path"],
-                  max(1, line - 4),
-                  min(entry["lines"], line + 4)
-                )
-              end)
-
-            %{"request" => request, "excerpts" => items, "truncated" => length(matches) > 8}
-
-          %{"operation" => op, "symbol" => symbol}
-          when op in ~w(find_definition find_references find_callers) and is_binary(symbol) ->
-            unless byte_size(symbol) in 1..160 and
-                     not String.contains?(symbol, ["\n", "\r", <<0>>]),
-                   do: raise("Invalid symbol")
-
-            records = symbol_records(run, repo, op, symbol)
-
-            %{
-              "request" => request,
-              "excerpts" => excerpts_for(run, repo, inventory, Enum.take(records, 8)),
-              "modeled_matches" => Enum.take(records, 8),
-              "truncated" => length(records) > 8,
-              "note" =>
-                "Definitions and modeled call sites only; absence is not proof of no callers."
-            }
-
-          %{"operation" => op, "path" => path, "first" => line} when op in ~w(trace_flow slice) ->
-            unless Scope.location_valid?(inventory, path, line, line),
-              do: raise("Invalid evidence anchor")
-
-            {file, key} = if op == "slice", do: {"slices", "target"}, else: {"flows", "sink"}
-
-            records =
-              facts(run, repo, file)
-              |> Enum.filter(fn row ->
-                loc = row[key] || %{}
-                loc["path"] == path and loc["line"] == line
-              end)
-
-            records =
-              if op == "trace_flow",
-                do: Enum.filter(records, &nontrivial_flow?/1),
-                else: records
-
-            selected = Enum.take(records, 4)
-
-            locs =
-              Enum.flat_map(selected, fn row ->
-                if op == "slice",
-                  do: row["locations"],
-                  else: [row["source"], row["sink"] | row["path"]]
-              end)
-              |> Enum.reject(&is_nil/1)
-              |> Enum.uniq_by(&{&1["path"], &1["line"]})
-              |> Enum.take(8)
-
-            %{
-              "request" => request,
-              "excerpts" => excerpts_for(run, repo, inventory, locs),
-              "modeled_matches" => selected,
-              "truncated" => length(records) > 4,
-              "note" =>
-                "Frozen native evidence at this anchor; no matching record is not proof of safety."
-            }
-
-          _ ->
-            raise "Unsupported evidence request; no shell, external repository or dependency access"
-        end
-      end)
+    answers = Enum.map(requests, &fulfill_request(run, repo, inventory, &1))
 
     existing = packet["excerpts"] ++ Enum.flat_map(answers, & &1["excerpts"])
 
@@ -506,6 +419,124 @@ defmodule BeamAudit.Evidence do
       Enum.map(answers, &Map.delete(&1, "excerpts")),
       &(&1 ++ Enum.map(answers, fn answer -> Map.delete(answer, "excerpts") end))
     )
+  end
+
+  defp fulfill_request(
+         run,
+         repo,
+         inventory,
+         %{"operation" => "read_source", "path" => path, "first" => first, "last" => last} =
+           request
+       ) do
+    %{
+      "request" => request,
+      "excerpts" => [excerpt(run, repo, inventory, path, first, last)],
+      "truncated" => false
+    }
+  end
+
+  defp fulfill_request(
+         run,
+         repo,
+         inventory,
+         %{"operation" => "find_symbol", "symbol" => symbol} = request
+       )
+       when is_binary(symbol) do
+    unless byte_size(symbol) in 2..160 and
+             not String.contains?(symbol, ["\n", "\r", <<0>>]),
+           do: raise("Invalid literal symbol")
+
+    matches =
+      Scope.included(inventory)
+      |> Enum.flat_map(fn entry ->
+        Scope.source!(run, repo, entry)
+        |> String.split("\n")
+        |> Enum.with_index(1)
+        |> Enum.filter(fn {line, _} -> String.contains?(line, symbol) end)
+        |> Enum.map(fn {_, line} -> {entry, line} end)
+      end)
+
+    items =
+      Enum.take(matches, 8)
+      |> Enum.map(fn {entry, line} ->
+        excerpt(
+          run,
+          repo,
+          inventory,
+          entry["path"],
+          max(1, line - 4),
+          min(entry["lines"], line + 4)
+        )
+      end)
+
+    %{"request" => request, "excerpts" => items, "truncated" => length(matches) > 8}
+  end
+
+  defp fulfill_request(run, repo, inventory, %{"operation" => op, "symbol" => symbol} = request)
+       when op in ~w(find_definition find_references find_callers) and is_binary(symbol) do
+    unless byte_size(symbol) in 1..160 and
+             not String.contains?(symbol, ["\n", "\r", <<0>>]),
+           do: raise("Invalid symbol")
+
+    records = symbol_records(run, repo, op, symbol)
+
+    %{
+      "request" => request,
+      "excerpts" => excerpts_for(run, repo, inventory, Enum.take(records, 8)),
+      "modeled_matches" => Enum.take(records, 8),
+      "truncated" => length(records) > 8,
+      "note" => "Definitions and modeled call sites only; absence is not proof of no callers."
+    }
+  end
+
+  defp fulfill_request(
+         run,
+         repo,
+         inventory,
+         %{"operation" => op, "path" => path, "first" => line} = request
+       )
+       when op in ~w(trace_flow slice) do
+    unless Scope.location_valid?(inventory, path, line, line),
+      do: raise("Invalid evidence anchor")
+
+    {file, key} = if op == "slice", do: {"slices", "target"}, else: {"flows", "sink"}
+
+    records =
+      facts(run, repo, file)
+      |> Enum.filter(fn row ->
+        loc = row[key] || %{}
+        loc["path"] == path and loc["line"] == line
+      end)
+
+    records =
+      if op == "trace_flow",
+        do: Enum.filter(records, &nontrivial_flow?/1),
+        else: records
+
+    selected = Enum.take(records, 4)
+
+    locs =
+      Enum.flat_map(selected, fn row ->
+        if op == "slice",
+          do: row["locations"],
+          else: [row["source"], row["sink"] | row["path"]]
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(&{&1["path"], &1["line"]})
+      |> Enum.take(8)
+
+    %{
+      "request" => request,
+      "excerpts" => excerpts_for(run, repo, inventory, locs),
+      "modeled_matches" => selected,
+      "truncated" => length(records) > 4,
+      "note" =>
+        "Frozen native evidence at this anchor; no matching record is not proof of safety."
+    }
+  end
+
+  defp fulfill_request(_run, _repo, _inventory, _request) do
+    raise "Unsupported evidence request; no shell, external repository or dependency access"
   end
 
   @doc false
@@ -523,29 +554,31 @@ defmodule BeamAudit.Evidence do
     locations
     |> Enum.uniq_by(&{&1["path"], &1["line"] || &1["first"]})
     |> Enum.flat_map(fn loc ->
-      path = loc["path"]
-      line = loc["line"] || loc["first"]
-
-      case Scope.lookup(inventory, path) do
-        nil ->
-          []
-
-        entry ->
-          case Store.safe(fn ->
-                 excerpt(
-                   run,
-                   repo,
-                   inventory,
-                   path,
-                   max(1, line - 6),
-                   min(entry["lines"], line + 10)
-                 )
-               end) do
-            {:ok, item} -> [item]
-            {:error, _} -> []
-          end
-      end
+      nearby_excerpt(run, repo, inventory, loc["path"], loc["line"] || loc["first"], 6, 10)
     end)
+  end
+
+  defp nearby_excerpt(run, repo, inventory, path, line, before, after_lines) do
+    with %{} = entry <- Scope.lookup(inventory, path),
+         {:ok, item} <-
+           Store.safe(fn ->
+             excerpt(
+               run,
+               repo,
+               inventory,
+               path,
+               max(1, line - before),
+               min(entry["lines"], line + after_lines)
+             )
+           end) do
+      [item]
+    else
+      _ -> []
+    end
+  end
+
+  defp flow_in_group?(flow, group) do
+    Enum.any?([flow["source"], flow["sink"] | flow["path"]], &in_group?(&1, group))
   end
 
   defp symbol_records(run, repo, op, symbol) do

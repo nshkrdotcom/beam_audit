@@ -45,14 +45,7 @@ defmodule BeamAudit.Scope do
     boundaries = Map.get(spec, "boundaries", [])
 
     unless is_list(boundaries) and
-             Enum.all?(boundaries, fn
-               %{"path" => path, "line" => line, "question" => question} ->
-                 relative?(path) and is_integer(line) and line > 0 and is_binary(question) and
-                   byte_size(question) in 1..1000
-
-               _ ->
-                 false
-             end),
+             Enum.all?(boundaries, &valid_boundary?/1),
            do: raise("Invalid boundary specifications")
 
     include_tests = Map.get(spec, "include_tests", false)
@@ -69,6 +62,13 @@ defmodule BeamAudit.Scope do
       "boundaries" => boundaries
     }
   end
+
+  defp valid_boundary?(%{"path" => path, "line" => line, "question" => question}) do
+    relative?(path) and is_integer(line) and line > 0 and is_binary(question) and
+      byte_size(question) in 1..1000
+  end
+
+  defp valid_boundary?(_), do: false
 
   @doc false
   def snapshot(run, repo, max_bytes) do
@@ -116,53 +116,63 @@ defmodule BeamAudit.Scope do
     path = e["path"]
     parts = Path.split(path)
     role = role(parts)
-    extension = Path.extname(path)
-
-    reason =
-      cond do
-        e["type"] != "blob" or e["mode"] not in ["100644", "100755"] ->
-          "not_regular_source"
-
-        Enum.any?(parts, &(&1 in @excluded)) ->
-          "dependency_or_build_tree"
-
-        Enum.any?(repo["exclude"], &(path == &1 or String.starts_with?(path, &1 <> "/"))) ->
-          "explicit_exclusion"
-
-        role in ["test", "example"] and not repo["include_tests"] ->
-          "test_or_example"
-
-        extension not in @extensions ->
-          "non_source_extension"
-
-        e["bytes"] > max_bytes ->
-          "source_size_limit"
-
-        true ->
-          nil
-      end
-
+    reason = exclusion_reason(e, repo, parts, role, max_bytes)
     base = Map.merge(e, %{"repo" => repo["id"], "role" => role})
 
     if reason do
       Map.merge(base, %{"status" => "excluded", "reason" => reason})
     else
-      bytes = git!(repo["root"], ["cat-file", "blob", e["oid"]])
+      materialize_blob(e, repo, dir, base)
+    end
+  end
 
-      if byte_size(bytes) != e["bytes"] or not String.valid?(bytes) or
-           :binary.match(bytes, <<0>>) != :nomatch do
-        Map.merge(base, %{"status" => "excluded", "reason" => "unsupported_source_encoding"})
-      else
-        dest = Path.join(dir, path)
-        Store.atomic(dest, bytes)
-        File.chmod!(dest, 0o400)
+  defp exclusion_reason(e, repo, parts, role, max_bytes) do
+    path = e["path"]
+    extension = Path.extname(path)
 
-        Map.merge(base, %{
-          "status" => "included",
-          "sha256" => Store.digest(bytes),
-          "lines" => length(String.split(bytes, "\n"))
-        })
-      end
+    cond do
+      e["type"] != "blob" or e["mode"] not in ["100644", "100755"] ->
+        "not_regular_source"
+
+      Enum.any?(parts, &(&1 in @excluded)) ->
+        "dependency_or_build_tree"
+
+      Enum.any?(repo["exclude"], &(path == &1 or String.starts_with?(path, &1 <> "/"))) ->
+        "explicit_exclusion"
+
+      role in ["test", "example"] and not repo["include_tests"] ->
+        "test_or_example"
+
+      true ->
+        source_limit(extension, e["bytes"], max_bytes)
+    end
+  end
+
+  defp source_limit(extension, bytes, max_bytes) do
+    cond do
+      extension not in @extensions -> "non_source_extension"
+      bytes > max_bytes -> "source_size_limit"
+      true -> nil
+    end
+  end
+
+  defp materialize_blob(e, repo, dir, base) do
+    path = e["path"]
+    bytes = git!(repo["root"], ["cat-file", "blob", e["oid"]])
+
+    if byte_size(bytes) != e["bytes"] or not String.valid?(bytes) or
+         :binary.match(bytes, <<0>>) != :nomatch do
+      Map.merge(base, %{"status" => "excluded", "reason" => "unsupported_source_encoding"})
+    else
+      dest = Path.join(dir, path)
+      Store.atomic(dest, bytes)
+      File.chmod!(dest, 0o400)
+
+      Map.merge(base, %{
+        "status" => "included",
+        "sha256" => Store.digest(bytes),
+        "lines" => length(String.split(bytes, "\n"))
+      })
     end
   end
 
@@ -196,16 +206,16 @@ defmodule BeamAudit.Scope do
     root = snapshot_dir(run, repo)
     unless File.lstat!(root).type == :directory, do: raise("Invalid snapshot root")
     # Never follow a modified snapshot symlink, including an intermediate directory.
-    Enum.reduce(Path.split(path), root, fn part, parent ->
-      child = Path.join(parent, part)
+    dest =
+      Enum.reduce(Path.split(path), root, fn part, parent ->
+        child = Path.join(parent, part)
 
-      case File.lstat!(child) do
-        %{type: :symlink} -> raise "Snapshot symlink: #{path}"
-        _ -> child
-      end
-    end)
+        case File.lstat!(child) do
+          %{type: :symlink} -> raise "Snapshot symlink: #{path}"
+          _ -> child
+        end
+      end)
 
-    dest = Path.join(root, path)
     unless File.lstat!(dest).type == :regular, do: raise("Snapshot is not a regular file")
     contents = File.read!(dest)
     unless Store.digest(contents) == entry["sha256"], do: raise("Snapshot changed: #{path}")

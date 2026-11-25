@@ -7,6 +7,8 @@ defmodule BeamAudit.Dependencies do
   Advisory matches remain visible regardless of their reachability verdict.
   """
   alias BeamAudit.{Scope, Store}
+  alias VulnCheck.Report.JSON, as: NativeJSON
+  alias VulnCheck.Workspace.{MixLock, MixProject}
 
   @manifests ~w(mix.exs rebar.config gleam.toml)
   @locks ~w(mix.lock rebar.lock manifest.toml)
@@ -41,25 +43,10 @@ defmodule BeamAudit.Dependencies do
     roots = project_roots(inputs)
     artifacts = if settings["compiled"], do: capture_artifacts(repo, dir, roots), else: nil
 
-    projects =
-      Enum.map(roots, fn root ->
-        case Store.safe(fn -> scan_project(dir, root, inputs, settings, artifacts) end) do
-          {:ok, project} -> project
-          {:error, reason} -> %{"path" => root, "status" => "failed", "reason" => reason}
-        end
-      end)
-
-    status =
-      cond do
-        Enum.any?(inputs, &(&1["status"] == "unavailable")) -> "partial"
-        roots == [] -> "not_applicable"
-        Enum.any?(projects, &(&1["status"] != "completed")) -> "partial"
-        artifacts && (artifacts["truncated"] or artifacts["files"] == []) -> "partial"
-        true -> "completed"
-      end
+    projects = Enum.map(roots, &assess_project(dir, &1, inputs, settings, artifacts))
 
     %{
-      "status" => status,
+      "status" => scan_status(inputs, projects, artifacts),
       "tool" => "vulncheck",
       "version" => VulnCheck.version(),
       "inputs" => inputs,
@@ -70,54 +57,76 @@ defmodule BeamAudit.Dependencies do
     }
   end
 
+  defp assess_project(dir, root, inputs, settings, artifacts) do
+    case Store.safe(fn -> scan_project(dir, root, inputs, settings, artifacts) end) do
+      {:ok, project} -> project
+      {:error, reason} -> %{"path" => root, "status" => "failed", "reason" => reason}
+    end
+  end
+
+  defp scan_status(inputs, projects, artifacts) do
+    cond do
+      Enum.any?(inputs, &(&1["status"] == "unavailable")) -> "partial"
+      projects == [] -> "not_applicable"
+      Enum.any?(projects, &(&1["status"] != "completed")) -> "partial"
+      artifacts && (artifacts["truncated"] or artifacts["files"] == []) -> "partial"
+      true -> "completed"
+    end
+  end
+
   # Metadata is kept separate from source, so it cannot pollute Git grep or source
   # review. Only already inventoried regular Git blobs are read.
   defp capture(run, repo, inventory, dir, max_bytes) do
     inventory
-    |> Enum.filter(fn entry ->
-      name = Path.basename(entry["path"])
+    |> Enum.filter(&metadata_entry?/1)
+    |> Enum.map(&capture_entry(run, repo, &1, dir, max_bytes))
+  end
 
-      metadata =
-        name in (@manifests ++ @locks) or String.ends_with?(name, ".app.src") or
-          ("config" in Path.split(entry["path"]) and Path.extname(name) == ".exs")
+  defp metadata_entry?(entry) do
+    name = Path.basename(entry["path"])
 
-      metadata and
-        (entry["status"] == "included" or
-           entry["reason"] in ~w(non_source_extension source_size_limit unsupported_source_encoding))
-    end)
-    |> Enum.map(fn entry ->
-      path = entry["path"]
-      record = Map.take(entry, ~w(path oid bytes))
+    metadata =
+      name in (@manifests ++ @locks) or String.ends_with?(name, ".app.src") or
+        ("config" in Path.split(entry["path"]) and Path.extname(name) == ".exs")
 
-      result =
-        Store.safe(fn ->
-          if entry["bytes"] > max_bytes or
-               entry["reason"] in ~w(source_size_limit unsupported_source_encoding),
-             do: raise("Metadata exceeds capture limits or is not valid source")
+    metadata and
+      (entry["status"] == "included" or
+         entry["reason"] in ~w(non_source_extension source_size_limit unsupported_source_encoding))
+  end
 
-          bytes =
-            if entry["status"] == "included" do
-              Scope.source!(run, repo["id"], entry)
-            else
-              case Scope.git(repo["root"], ["cat-file", "blob", entry["oid"]]) do
-                {bytes, 0} -> bytes
-                {_, code} -> raise("Git metadata read failed (#{code})")
-              end
-            end
+  defp capture_entry(run, repo, entry, dir, max_bytes) do
+    record = Map.take(entry, ~w(path oid bytes))
 
-          unless byte_size(bytes) == entry["bytes"] and String.valid?(bytes) and
-                   :binary.match(bytes, <<0>>) == :nomatch,
-                 do: raise("Invalid metadata bytes")
+    result =
+      Store.safe(fn ->
+        if entry["bytes"] > max_bytes or
+             entry["reason"] in ~w(source_size_limit unsupported_source_encoding),
+           do: raise("Metadata exceeds capture limits or is not valid source")
 
-          Store.atomic(Path.join(dir, path), bytes)
-          Store.digest(bytes)
-        end)
+        bytes = metadata_bytes(run, repo, entry)
 
-      case result do
-        {:ok, hash} -> Map.merge(record, %{"status" => "captured", "sha256" => hash})
-        {:error, reason} -> Map.merge(record, %{"status" => "unavailable", "reason" => reason})
-      end
-    end)
+        unless byte_size(bytes) == entry["bytes"] and String.valid?(bytes) and
+                 :binary.match(bytes, <<0>>) == :nomatch,
+               do: raise("Invalid metadata bytes")
+
+        Store.atomic(Path.join(dir, entry["path"]), bytes)
+        Store.digest(bytes)
+      end)
+
+    case result do
+      {:ok, hash} -> Map.merge(record, %{"status" => "captured", "sha256" => hash})
+      {:error, reason} -> Map.merge(record, %{"status" => "unavailable", "reason" => reason})
+    end
+  end
+
+  defp metadata_bytes(run, repo, %{"status" => "included"} = entry),
+    do: Scope.source!(run, repo["id"], entry)
+
+  defp metadata_bytes(_run, repo, entry) do
+    case Scope.git(repo["root"], ["cat-file", "blob", entry["oid"]]) do
+      {bytes, 0} -> bytes
+      {_, code} -> raise("Git metadata read failed (#{code})")
+    end
   end
 
   @doc false
@@ -183,29 +192,11 @@ defmodule BeamAudit.Dependencies do
   end
 
   defp scan_locked(dir, root, inputs, config, artifacts, declarations) do
-    project_dir = config.project_dir
-    # VulnCheck's Mix workspace reader follows path-dependency manifests and
-    # apps_path. External paths must not silently introduce unpinned inputs.
-    # Use its existing lock parser, feed matcher and solver in those cases.
     unsafe = external_mix_paths(dir, inputs, root)
-
-    {report, mode, notes} =
-      if File.regular?(Path.join(project_dir, "mix.lock")) and
-           (unsafe != [] or not File.regular?(Path.join(project_dir, "mix.exs"))) do
-        unsafe = if unsafe == [], do: ["No captured Mix manifest"], else: unsafe
-        {lock_only(config, unsafe), "lock_only", unsafe}
-      else
-        case VulnCheck.scan(config, ignore: false) do
-          {:ok, report} ->
-            {report, if(artifacts, do: "selected_artifacts", else: "metadata_only"), []}
-
-          {:error, reason} ->
-            raise("VulnCheck: #{inspect(reason, limit: 20, printable_limit: 1000)}")
-        end
-      end
+    {report, mode, notes} = assess_locked(config, artifacts, unsafe)
 
     # Use the upstream reporter instead of serializing private graph structs.
-    native = report |> VulnCheck.Report.JSON.render(config) |> JSON.decode!()
+    native = report |> NativeJSON.render(config) |> JSON.decode!()
 
     packages =
       report.workspace.packages
@@ -224,24 +215,9 @@ defmodule BeamAudit.Dependencies do
         }
       end)
 
-    feed = native["feed"] || %{}
-
-    feed_gaps =
-      feed == %{} or feed["status"] == "stale" or
-        (feed["rejected_records"] || 0) > 0 or not is_nil(feed["refresh_error"])
-
-    warnings = native["warnings"] || []
-    # Missing BEAMs are expected in metadata-only mode; they do not invalidate
-    # the version match. Other native warnings remain visible and may limit it.
-    advisory_warnings =
-      if artifacts, do: warnings, else: Enum.reject(warnings, &expected_artifact_warning?/1)
-
-    status =
-      if notes != [] or feed_gaps or advisory_warnings != [], do: "partial", else: "completed"
-
     %{
       "path" => root,
-      "status" => status,
+      "status" => locked_status(native, notes, artifacts),
       "mode" => mode,
       "notes" => notes,
       "declarations" => declarations,
@@ -257,33 +233,72 @@ defmodule BeamAudit.Dependencies do
     }
   end
 
+  # VulnCheck's Mix workspace reader follows path-dependency manifests and
+  # apps_path. Use the existing lock parser, feed matcher and solver when
+  # native workspace discovery could introduce unpinned inputs.
+  defp assess_locked(config, artifacts, unsafe) do
+    if File.regular?(Path.join(config.project_dir, "mix.lock")) and
+         (unsafe != [] or not File.regular?(Path.join(config.project_dir, "mix.exs"))) do
+      notes = if unsafe == [], do: ["No captured Mix manifest"], else: unsafe
+      {lock_only(config, notes), "lock_only", notes}
+    else
+      assess_native(config, artifacts)
+    end
+  end
+
+  defp assess_native(config, artifacts) do
+    case VulnCheck.scan(config, ignore: false) do
+      {:ok, report} ->
+        {report, if(artifacts, do: "selected_artifacts", else: "metadata_only"), []}
+
+      {:error, reason} ->
+        raise("VulnCheck: #{inspect(reason, limit: 20, printable_limit: 1000)}")
+    end
+  end
+
+  defp locked_status(native, notes, artifacts) do
+    feed_gaps = incomplete_feed?(native["feed"] || %{})
+    warnings = native["warnings"] || []
+    # Missing BEAMs are expected in metadata-only mode; they do not invalidate
+    # the version match. Other native warnings remain visible and may limit it.
+    advisory_warnings =
+      if artifacts, do: warnings, else: Enum.reject(warnings, &expected_artifact_warning?/1)
+
+    if notes != [] or feed_gaps or advisory_warnings != [],
+      do: "partial",
+      else: "completed"
+  end
+
+  defp incomplete_feed?(feed) do
+    feed == %{} or feed["status"] == "stale" or
+      (feed["rejected_records"] || 0) > 0 or not is_nil(feed["refresh_error"])
+  end
+
   @doc false
   def external_mix_paths(dir, inputs, _root) do
     inputs
-    |> Enum.filter(fn input ->
-      Path.basename(input["path"]) == "mix.exs"
-    end)
-    |> Enum.flat_map(fn input ->
-      file = Path.join(dir, input["path"])
+    |> Enum.filter(&(Path.basename(&1["path"]) == "mix.exs"))
+    |> Enum.flat_map(&external_mix_manifest_paths(dir, &1["path"]))
+  end
 
-      case VulnCheck.Workspace.MixProject.parse_file(file) do
-        {:ok, project} ->
-          paths = [project.apps_path | Enum.map(project.deps, & &1.path)]
+  defp external_mix_manifest_paths(dir, manifest) do
+    file = Path.join(dir, manifest)
 
-          paths
-          |> Enum.filter(&is_binary/1)
-          |> Enum.reject(fn path ->
-            resolved = Path.expand(path, Path.dirname(file))
+    case MixProject.parse_file(file) do
+      {:ok, project} ->
+        [project.apps_path | Enum.map(project.deps, & &1.path)]
+        |> Enum.filter(&is_binary/1)
+        |> Enum.reject(&captured_workspace_path?(dir, file, &1))
+        |> Enum.map(&"#{manifest}: unavailable or external workspace path #{&1}")
 
-            Path.type(path) == :relative and inside?(dir, resolved) and
-              File.dir?(resolved)
-          end)
-          |> Enum.map(&"#{input["path"]}: unavailable or external workspace path #{&1}")
+      {:error, reason} ->
+        ["#{manifest}: #{inspect(reason)}"]
+    end
+  end
 
-        {:error, reason} ->
-          ["#{input["path"]}: #{inspect(reason)}"]
-      end
-    end)
+  defp captured_workspace_path?(dir, manifest, path) do
+    resolved = Path.expand(path, Path.dirname(manifest))
+    Path.type(path) == :relative and inside?(dir, resolved) and File.dir?(resolved)
   end
 
   defp expected_artifact_warning?(warning) do
@@ -300,7 +315,7 @@ defmodule BeamAudit.Dependencies do
         (root == "." or String.starts_with?(input["path"], root <> "/"))
     end)
     |> Enum.map(fn input ->
-      case VulnCheck.Workspace.MixProject.parse_file(Path.join(dir, input["path"])) do
+      case MixProject.parse_file(Path.join(dir, input["path"])) do
         {:ok, project} ->
           %{
             "path" => input["path"],
@@ -331,7 +346,7 @@ defmodule BeamAudit.Dependencies do
   defp lock_only(config, notes) do
     alias VulnCheck.Types.{ScanReport, Summary, Workspace}
     lock = Path.join(config.project_dir, "mix.lock")
-    {:ok, packages, warnings} = VulnCheck.Workspace.MixLock.parse_file_with_warnings(lock)
+    {:ok, packages, warnings} = MixLock.parse_file_with_warnings(lock)
 
     workspace = %Workspace{
       root_dir: config.project_dir,

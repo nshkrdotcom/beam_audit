@@ -50,13 +50,11 @@ defmodule BeamAudit.Store do
   end
 
   def safe(fun) do
-    try do
-      {:ok, fun.()}
-    rescue
-      error -> {:error, Exception.message(error)}
-    catch
-      kind, value -> {:error, "#{kind}: #{inspect(value, limit: 10, printable_limit: 500)}"}
-    end
+    {:ok, fun.()}
+  rescue
+    error -> {:error, Exception.message(error)}
+  catch
+    kind, value -> {:error, "#{kind}: #{inspect(value, limit: 10, printable_limit: 500)}"}
   end
 
   # Only trusted installed BEAM code is placed on this worker's code path.

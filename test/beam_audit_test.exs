@@ -414,6 +414,63 @@ defmodule BeamAuditTest do
     assert {:error, _} = BeamAudit.report(run)
   end
 
+  test "concurrent batches preserve pending evidence when the shared budget is exhausted", ctx do
+    {:ok, summary} = BeamAudit.discover(ctx.root, out: ctx.out, profile: "source")
+    run = summary.path
+    repo = "r001"
+
+    settings =
+      Map.merge(Run.verify!(run)["settings"], %{
+        "jobs" => 4,
+        "batch_size" => 1,
+        "max_calls" => 1,
+        "evidence_rounds" => 1
+      })
+
+    assert length(Store.read_lines(Path.join([run, repo, "candidates.jsonl"]))) > 1
+    counter = :atomics.new(1, signed: false)
+    metadata = %{"provider" => "fixture"}
+    request = %{"operation" => "find_symbol", "symbol" => "binary_to_term"}
+
+    assert :ok =
+             Review.execute(run, repo, settings, counter, fn prompt, _, _, _ ->
+               [packet] = prompt_packets(prompt)
+               decision = Map.put(disposition(packet), "requests", [request])
+               {:ok, %{"results" => [decision]}, metadata}
+             end)
+
+    assert :atomics.get(counter, 1) == 1
+    assert Run.call_count(run) == 1
+    call = Store.read(Path.join([run, "calls", "1.json"]))
+    assert call["status"] == "received"
+    assert [id] = call["candidates"]
+    refute Review.record(run, repo, "decisions", id)
+    pending = Review.record(run, repo, "pending_decisions", id)
+    assert pending["call"] == 1
+    assert pending["packet"]["evidence_round"] == 1
+    assert [%{"request" => ^request}] = pending["packet"]["answers"]
+    assert Run.verify!(run)
+
+    settings = Map.merge(settings, %{"jobs" => 1, "max_calls" => 2})
+
+    assert :ok =
+             Review.execute(run, repo, settings, counter, fn prompt, _, _, _ ->
+               [packet] = prompt_packets(prompt)
+               assert packet == pending["packet"]
+               decision = Map.put(disposition(packet), "requests", [request])
+               {:ok, %{"results" => [decision]}, metadata}
+             end)
+
+    accepted = Review.record(run, repo, "decisions", id)
+    assert accepted["call"] == 2
+    assert accepted["reviewer"] == metadata
+    assert accepted["decision"]["requests"] == []
+    assert accepted["decision"]["reason"] =~ "Evidence round limit reached"
+    refute Review.pending_packet(run, repo, "decisions", id)
+    assert Run.call_count(run) == 2
+    assert Run.verify!(run)
+  end
+
   test "dependency advisory matching uses committed metadata and an offline native feed", ctx do
     put(ctx.root, "mix.exs", """
     defmodule Target.MixProject do
@@ -491,7 +548,7 @@ defmodule BeamAuditTest do
           "boundaries" => [
             %{
               "path" => "lib/audit_fixture.ex",
-              "line" => 2,
+              "line" => 1,
               "question" => "Review this entrypoint"
             }
           ]

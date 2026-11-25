@@ -5,7 +5,7 @@ defmodule BeamAudit.Findings do
   Candidate identity remains revision-specific. Comparison fingerprints omit the
   revision and line number, but do not transfer safety decisions or prove fixes.
   """
-  alias BeamAudit.{Report, Scope, Store, Run}
+  alias BeamAudit.{Report, Run, Scope, Store}
 
   @doc false
   def source(run, repo, inventory, rows) do
@@ -31,31 +31,33 @@ defmodule BeamAudit.Findings do
       {key, row}
     end)
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-    |> Enum.map(fn {key, matches} ->
-      matches =
-        Enum.sort_by(matches, fn row ->
-          {if(row["effective"] == "confirmed", do: 0, else: 1),
-           severity(row["primary"]["decision"]["severity"]), row["candidate"]["id"]}
-        end)
-
-      row = hd(matches)
-      group = row["candidate"]
-      decision = row["primary"]["decision"]
-
-      %{
-        "kind" => "source",
-        "fingerprint" => key,
-        "repository" => repo["root"],
-        "revision" => repo["commit"],
-        "path" => group["path"],
-        "rule" => group["rule"],
-        "status" => row["effective"],
-        "severity" => decision["severity"],
-        "candidate_ids" => Enum.map(matches, & &1["candidate"]["id"]),
-        "investigations" => matches
-      }
-    end)
+    |> Enum.map(&source_finding(repo, &1))
     |> Enum.sort_by(&{severity(&1["severity"]), &1["fingerprint"]})
+  end
+
+  defp source_finding(repo, {key, matches}) do
+    matches =
+      Enum.sort_by(matches, fn row ->
+        {if(row["effective"] == "confirmed", do: 0, else: 1),
+         severity(row["primary"]["decision"]["severity"]), row["candidate"]["id"]}
+      end)
+
+    row = hd(matches)
+    group = row["candidate"]
+    decision = row["primary"]["decision"]
+
+    %{
+      "kind" => "source",
+      "fingerprint" => key,
+      "repository" => repo["root"],
+      "revision" => repo["commit"],
+      "path" => group["path"],
+      "rule" => group["rule"],
+      "status" => row["effective"],
+      "severity" => decision["severity"],
+      "candidate_ids" => Enum.map(matches, & &1["candidate"]["id"]),
+      "investigations" => matches
+    }
   end
 
   @doc false

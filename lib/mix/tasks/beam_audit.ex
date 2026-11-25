@@ -174,14 +174,16 @@ defmodule Mix.Tasks.BeamAudit do
         config = path |> File.read!() |> JSON.decode!()
 
         configured =
-          Enum.flat_map(@config_keys, fn key ->
-            case Map.fetch(config, Atom.to_string(key)) do
-              {:ok, value} -> [{key, value}]
-              :error -> []
-            end
-          end)
+          Enum.flat_map(@config_keys, &configured_option(config, &1))
 
         {Map.fetch!(config, "repositories"), Keyword.merge(configured, opts)}
+    end
+  end
+
+  defp configured_option(config, key) do
+    case Map.fetch(config, Atom.to_string(key)) do
+      {:ok, value} -> [{key, value}]
+      :error -> []
     end
   end
 

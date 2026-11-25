@@ -6,13 +6,22 @@ Run the following from the BeamAudit checkout to verify resolved tool APIs,
 analysis behavior, documentation and package contents:
 
 ```sh
-mix deps.get
+mix deps.get --check-locked
 mix format --check-formatted
 mix compile --warnings-as-errors
 mix test
+mix credo --strict --all
+mix dialyzer
 mix docs
-mix hex.build
+git diff --check
+package_dir=$(mktemp -d)
+mix hex.build --output "$package_dir/beam_audit.tar"
 ```
+
+The static analysis cleanup passed 17 tests on Elixir 1.20.5 and OTP 29.
+Credo 1.7.19 reported zero findings in strict mode with all checks enabled.
+Dialyxir 1.4.9 reported zero Dialyzer errors and zero skips using the local
+PLT. These results cover code quality and type analysis.
 
 Normal tests must not execute fixture projects, contact a provider or require
 live advisories. Use a synthetic offline native feed for version matching and
