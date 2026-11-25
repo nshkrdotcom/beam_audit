@@ -107,6 +107,24 @@ boundaries and explicit audit questions can also enter the queue. Native hits,
 context, exclusions, review records, and coverage gaps remain traceable.
 Dependency advisories are deterministic results, not model judgments.
 
+## Real-world validation
+
+Deterministic discovery on pinned revisions of Weld, Codex SDK and Gemini Ex
+captured **379 source files**, recorded **3,607 native analysis hits** and
+consolidated them into **306 review candidates**.
+[Weld](https://github.com/nshkrdotcom/weld) ·
+[Codex SDK](https://github.com/nshkrdotcom/codex_sdk) ·
+[Gemini Ex](https://github.com/nshkrdotcom/gemini_ex)
+
+Validation also covered historical vulnerable/fixed source pairs and a real
+DBConnection advisory match. In a bounded v0.1.0 run on a pinned Hex decoder
+extract, ASM-backed Codex review recorded six accepted primary decisions,
+including one that cited additional retrieved source. BeamAudit resumed the
+saved run and regenerated a byte-identical report without provider calls.
+
+See the [validation guide](guides/validation.md) and
+[curated example report](guides/example-report.md).
+
 ## Integration
 
 Use the same API from a trusted Mix project that depends on BeamAudit:

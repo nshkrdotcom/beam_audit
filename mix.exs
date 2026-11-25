@@ -63,6 +63,7 @@ defmodule BeamAudit.MixProject do
         "guides/integration.md",
         "guides/results-and-recovery.md",
         "guides/validation.md",
+        "guides/example-report.md",
         "CHANGELOG.md",
         "LICENSE"
       ],
@@ -78,7 +79,8 @@ defmodule BeamAudit.MixProject do
         "Operations and integration": [
           "guides/integration.md",
           "guides/results-and-recovery.md",
-          "guides/validation.md"
+          "guides/validation.md",
+          "guides/example-report.md"
         ],
         Project: ["CHANGELOG.md", "LICENSE"]
       ],

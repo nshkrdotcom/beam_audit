@@ -42,6 +42,29 @@ advisory feeds; `dependencies` skips source analyzers and has no review queue.
 feed data; missing or stale inputs are visible. `--compiled` is opt-in and
 reads existing build artifacts only. Nothing compiles the target.
 
+## Try a bounded review
+
+Start with a small, authorized Git repository. Use the run ID printed by
+discovery in the remaining commands. The first `report` command prints the
+saved report path. Open that file and inspect the candidate queue before resuming.
+
+```sh
+out="$HOME/beam-audit-demo"
+mix beam_audit /path/to/small-repository --rev HEAD --profile source \
+  --discover-only --out "$out"
+
+run_id=RUN_ID
+mix beam_audit report "$run_id" --out "$out"
+mix beam_audit resume "$run_id" --out "$out" --jobs 1 --batch-size 1 --max-calls 3
+mix beam_audit report "$run_id" --out "$out"
+```
+
+Resume uses Codex by default and reserves at most three calls cumulatively.
+A partial result can exit nonzero and still save its decisions and report.
+The final `report` command regenerates the report from disk without provider
+usage. See the [curated example report](example-report.md) for a saved-run
+example.
+
 ## Repository selection
 
 Pin a single positional repository with `--rev REF` (default `HEAD`). Multiple
