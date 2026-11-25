@@ -1,34 +1,75 @@
 # Library integration
 
-Use the library API from the ecosystem manager, not a second scanner or agent
-integration layer. Calls return `{:ok, result}` or `{:error, reason}`. Successful
-operation does not certify security: inspect status, pending, unresolved and gaps.
+Use the library API from a trusted calling Mix project or host application.
+Add the published package to the caller's Mix dependencies:
+
+```elixir
+{:beam_audit, "~> 0.1.0"}
+```
+
+The audit operations are synchronous and return `{:ok, result}` or
+`{:error, reason}`. `doctor/0` returns its prerequisite map directly. Successful
+operation does not certify security: inspect status, pending, unresolved and
+coverage gaps.
+
+## Audit API
 
 ```elixir
 repositories = [
-  %{"path" => "/workspace/weld", "revision" => "HEAD"},
-  %{"path" => "/workspace/codex_sdk", "exclude" => ["third_party"]}
+  %{"path" => "/path/to/app_a", "revision" => "HEAD"},
+  %{"path" => "/path/to/app_b", "exclude" => ["third_party"]}
 ]
 {:ok, discovery} = BeamAudit.discover(repositories, profile: "full")
 {:ok, result} = BeamAudit.resume(discovery.path, max_calls: 12,
   on_progress: fn event -> IO.inspect(event) end)
 {:ok, report} = BeamAudit.report(result.path)
-{:ok, changes} = BeamAudit.compare(previous_run, result.path)
+# Compare with a separately captured earlier run when available:
+# {:ok, changes} = BeamAudit.compare(previous_run, result.path)
 ```
 
 `audit/2` combines discovery and review; `doctor/0` inspects local prerequisites.
-Options are Elixir keywords; repository specifications use string keys. Profiles
-are `full`, `source`, `dependencies`. Progress callbacks receive stage metadata,
-not source. Observer failures do not fail the audit. Summary fields include run
-identity/path, report, status, pending, unresolved, coverage_gaps, source_findings,
-dependency_findings, combined findings count, usage and repository_count.
-`findings.jsonl` contains structured source and dependency findings.
+Both `discover/2` and `audit/2` accept a repository path or specification, or a
+list of paths/specifications. Run options are Elixir keywords. Repository
+specifications use string keys:
 
-Configure a results root for the ecosystem manager, or pass `out:` explicitly:
+| Key | Meaning |
+| --- | --- |
+| `"path"` | Required Git repository root |
+| `"revision"` | Git reference, default `HEAD` |
+| `"exclude"` | Repository-relative paths or directory prefixes |
+| `"include_tests"` | Override the run's test/example inclusion policy |
+| `"boundaries"` | List of audit questions with `"path"`, `"line"` and `"question"` |
+
+Boundary paths must be relative, lines positive integers, and question strings
+1–1,000 bytes. Use actual in-scope source anchors. Duplicate repository/commit
+pairs are rejected within a run.
+
+Profiles and option ranges are documented in [Getting started](getting-started.md).
+`resume/2` accepts review tuning options without repeating discovery; pass
+`reconsider: true` to explicitly reopen unresolved or disputed decisions when
+budget remains. The optional `on_progress:` callback receives atom-keyed stage
+metadata, not source. Event stages are `:discovery`, `:dependencies`, `:review`,
+`:provider_call` and `:provider_return`. Observer failures do not fail the audit.
+
+## Return values
+
+`discover/2`, `audit/2`, `resume/2` and `report/2` return atom-keyed summary maps
+inside `{:ok, summary}`. Fields include `id`, `path`, `report`, `status`,
+`review_status`, `pending`, `unresolved`, `coverage_gaps`, `source_findings`,
+`dependency_findings`, `findings` (combined count), `usage` and
+`repository_count`. `list_runs/1`, `delete_run/2` and `prune_runs/1` likewise
+return atom-keyed lifecycle maps inside `{:ok, result}`. `compare/3` returns
+`{:ok, comparison}` with string keys, and `doctor/0` returns a string-keyed map
+directly. Stored JSON and JSONL use JSON string keys; `findings.jsonl` contains
+structured source and dependency findings.
+
+## Storage and retention
+
+Configure a results root in the calling application, or pass `out:` explicitly:
 
 ```elixir
 # In the calling project's config/config.exs
-config :beam_audit, out: "/var/lib/ecosystem/beam-audit/runs"
+config :beam_audit, out: "/path/to/audit-runs"
 ```
 
 ```elixir
@@ -48,8 +89,10 @@ maps use atom keys for lifecycle metadata (`runs`, `total_bytes`, `selected`,
 removal is per run rather than an all-or-nothing transaction. No provider is
 used by these commands.
 
-Run API operations are synchronous. Public run operations use a directory
-guard; callers still coordinate independent runs and provider quotas. No database, service,
-custom agent runtime or application supervision tree is added. Packaged release
-operation should be validated separately if needed; the source worker uses the
-installed Elixir executable and trusted code paths.
+## Operational considerations
+
+Public run operations use a directory guard. Callers still coordinate independent
+runs and shared provider quotas. No database or background service is required.
+If deploying BeamAudit in a packaged release, validate that environment
+separately: the source worker uses the installed Elixir executable and trusted
+code paths.

@@ -1,29 +1,58 @@
 # Scope and safety
 
-The target is an explicit repository root and immutable Git commit. HEAD is
-resolved once. Uncommitted and untracked files are not included. Git blob reads
-avoid worktree symlinks and filters; the scanner does not execute target Mix
-configuration, macros, tests, or application startup. The tools and repository
-metadata are assumed to be trusted local inputs, not a hostile OS environment.
+## Repository and snapshot scope
 
-Source snapshots include regular Elixir, Erlang, Gleam and template files
-selected by policy. Test/example trees are excluded by default; dependency,
-build, vendor, symlink and gitlink entries are excluded. Other vendored source
-requires explicit exclusion. The inventory records omissions and reasons.
+Each target must be the Git repository root, not a subdirectory. BeamAudit
+resolves the requested revision (default `HEAD`) to a commit once. Uncommitted
+and untracked files are not included. Place the results root outside all audited
+repositories. Git blob reads avoid worktree symlinks and filters; the scanner
+does not execute target Mix configuration, macros, tests or application startup.
+The tools and repository metadata are assumed to be trusted local inputs, not
+a hostile OS environment.
+
+The source inventory includes regular tracked files with these extensions:
+
+- Elixir: `.ex`, `.exs`; templates: `.eex`, `.heex`, `.leex`.
+- Erlang: `.erl`, `.hrl`; Gleam: `.gleam`.
+
+Path components named `.git`, `deps`, `_build`, `vendor`, `vendored`,
+`node_modules` or `.beam_audit` are outside source scope. By default, `test`,
+`tests`, `test_support`, `fixtures`, `example`, `examples`, `bench` and
+`benchmarks` are also excluded. Use `--include-tests` or repository-specific
+`include_tests` to include the latter group. Symlink and gitlink entries are
+not materialized. Use repository-specific `exclude` for other vendored or
+out-of-scope paths.
+
+Files exceeding `max_file_bytes`, unsupported source encodings and other
+omissions are recorded in the inventory. On Unix, run directories are created
+with mode `0o700` and captured source files with mode `0o400`. BeamAudit verifies
+SHA-256 digests when reading source through its snapshot interface and when
+validating stored runs. These checks do not make a hostile host trustworthy.
+
+## Dependencies and compiled artifacts
 
 Dependency metadata is captured separately from the source tree. The native
 scanner uses committed lockfiles and static declarations. External/unavailable
 Mix path references trigger conservative lock-only assessment rather than
 following a neighboring checkout. Path/git packages may lack applicable feed
 coverage; do not confuse lack of matches with safety. Existing build artifact
-capture is explicit and limited to regular files in usual build layouts; it
-never compiles a target. Artifact provenance is weaker than pinned source.
+capture is explicit (`--compiled`) and limited to regular `.beam` and `.app`
+files in supported build layouts. Symlinked artifacts and path components are
+excluded. Capture is capped
+at 64 MiB per file, 512 MiB total and 20,000 files per repository. It never
+compiles a target. Artifact provenance is weaker than pinned source. See
+[Dependency security](dependencies.md) for metadata and artifact details.
+
+## Review boundary
 
 Review receives bounded packets of source evidence. Its allowed evidence
 operations read only recorded source and analysis facts. The runner validates
 locations, citations and decisions and rejects requests for other repositories.
-ASM owns normal trusted local execution and provider permissions. These controls
-are not OS-level containment. No artificial qualification mechanism is used.
+ASM manages trusted local provider execution and provider permissions. The
+bounded evidence interface constrains BeamAudit's review requests; it does not
+provide OS-level containment of provider processes.
+
+## Confidentiality and remediation
 
 Reports, prompts, provider output and snapshots may contain confidential code.
 Use only authorized providers and repositories. Deleting a local run does not

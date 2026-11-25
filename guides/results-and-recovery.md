@@ -3,7 +3,7 @@
 ## Storage location
 
 By default, run records live under `$XDG_STATE_HOME/beam_audit/runs/RUN_ID`.
-If the state variable is unset, empty or relative, use
+If the state variable is unset, empty or relative, the location falls back to
 `~/.local/state/beam_audit/runs/RUN_ID`. This is durable user state, not a
 cache that may be silently discarded. The results root is selected in order:
 
@@ -14,10 +14,13 @@ cache that may be silently discarded. The results root is selected in order:
 
 The selected root is outside the audited repositories. It is created on the
 first discovery, not on listing or retention preview. Only the current run
-schema is supported; no automatic migration or legacy-root lookup is performed.
+schema is supported; run records are not automatically migrated.
 An explicit run directory may be passed to resume, report and compare; run IDs
 are resolved within the selected root. Do not rename run directories.
-A new policy or revision needs a new discovery run.
+A new policy or revision needs a new discovery run. Resume keeps the discovery
+settings frozen in `manifest.json` and permits review-stage overrides only:
+provider, model, jobs, batch size, cumulative call budget, evidence rounds and
+deadline. The results root selects the run; it does not change its captured scope.
 
 ## Run records
 
@@ -33,6 +36,21 @@ RUN_ID/
     history/, review_errors/, dispositions.jsonl, findings.jsonl
   calls/, review_status.json, summary.json, report.md
 ```
+
+The report projections are regenerated from stored records:
+
+| File | Purpose |
+| --- | --- |
+| `report.md` | Human-readable findings, evidence, coverage and outstanding work |
+| `summary.json` | Run identity, status, counts and observed provider usage |
+| `rNNN/findings.jsonl` | Consolidated accepted source findings and dependency advisory matches |
+| `rNNN/dispositions.jsonl` | Effective review status for every candidate, including unresolved and pending groups |
+
+The `accounted_within_declared_policy` status requires zero pending reviews,
+unresolved decisions and recorded coverage gaps. Confirmed findings may still
+be present. `partial_or_unresolved` indicates incomplete accounting, not a
+judgment that the target is unsafe or safe. Some files may be absent if a stage
+never completed.
 
 Manifest and evidence digests freeze the discovery inputs. Records use synced
 temporary files and atomic replacement. This supports process interruption,
@@ -72,6 +90,7 @@ mix beam_audit compare OLD_RUN NEW_RUN
 ```
 
 `report` and `compare` use stored records and invoke no provider or scanner.
+Comparison regenerates both reports from their persisted inputs.
 Pending evidence packets preserve work across budget pauses. Reconsideration
 archives unresolved/disputed records before reopening; no silent change to
 accepted safe or confirmed decisions. Byte equality is expected for identical
@@ -122,7 +141,7 @@ Both deletion commands are dry runs unless `--yes` is supplied (library:
 actual deleted IDs and any errors. Prune continues across individual failures;
 there is no rollback. Preview is not a reservation: an applied prune computes
 a fresh selection. Inspect the results, especially if other processes are
-running. No automatic retention, hard size quota, scheduler or global index
-is introduced. Use explicit pruning or a caller-chosen temporary results root
-for disposable work. VulnCheck's own advisory cache is outside this lifecycle;
+running. There is no automatic retention, hard size quota, scheduler or global
+index. Use explicit pruning or a caller-chosen temporary results root for
+disposable work. VulnCheck's own advisory cache is outside this lifecycle;
 provider retention is also separate. Deleting run files is not secure erasure.

@@ -17,16 +17,34 @@ its target projects. It does not replace the underlying analyzers or ASM.
 
 ## Getting started
 
-Requires Elixir 1.20, compatible OTP, and Git. The analyzer libraries are
+Requires Elixir `~> 1.20`, compatible OTP, and Git. The analyzer libraries are
 ordinary Mix dependencies. AI review also requires an authenticated ASM provider;
-Codex is the default. There are no required environment variables, additional
-scanner binaries, or services.
+Codex is the default. There are no required environment variables or additional
+scanner binaries.
+
+### Installation
+
+To use BeamAudit from a separate, trusted Mix project, add the published Hex
+package to its dependencies:
+
+```elixir
+{:beam_audit, "~> 0.1.0"}
+```
+
+Run `mix deps.get` in that project. To work from a standalone source checkout
+(including before the package is published), use:
 
 ```sh
 git clone https://github.com/nshkrdotcom/beam_audit.git
 cd beam_audit
 mix deps.get
-mix beam_audit ~/projects/weld --discover-only
+```
+
+Check the local prerequisites and start with deterministic discovery:
+
+```sh
+mix beam_audit doctor
+mix beam_audit ~/projects/my_app --discover-only
 ```
 
 The default full profile captures committed source and dependency metadata.
@@ -34,9 +52,9 @@ Discovery-only does not call a model. Advisory data may be fetched through
 VulnCheck's native feed cache. Inspect the saved report before spending tokens.
 
 ```sh
-mix beam_audit ~/projects/weld ~/projects/codex_sdk
-mix beam_audit ~/projects/weld --profile source --discover-only
-mix beam_audit ~/projects/weld --profile dependencies
+mix beam_audit ~/projects/my_app ~/projects/my_lib
+mix beam_audit ~/projects/my_app --profile source --discover-only
+mix beam_audit ~/projects/my_app --profile dependencies
 mix beam_audit resume RUN_ID --max-calls 25
 mix beam_audit report RUN_ID
 mix beam_audit compare OLD_RUN NEW_RUN
@@ -44,8 +62,12 @@ mix beam_audit compare OLD_RUN NEW_RUN
 
 New runs default to one concurrent provider call and at most 24 reserved calls
 across all repositories in that run. A provider failure pauses new launches.
-Resume does not repeat discovery or accepted decisions. It uses a cumulative
-budget; increase it deliberately. Independent processes do not share a quota.
+Resume does not repeat discovery or accepted decisions unless reconsideration is
+explicitly requested for unresolved or disputed work. The call budget is
+cumulative; increase it deliberately. Separate runs have independent budgets
+but can consume the same provider account quota.
+Full audits and resume exit nonzero when accounting remains incomplete or
+unresolved, but preserve the saved report and available recovery records.
 Use `--compiled` only when existing build artifacts are wanted as additional
 reachability evidence. No target build is performed.
 
@@ -59,14 +81,14 @@ Runs are stored under `$XDG_STATE_HOME/beam_audit/runs`, defaulting to
 mix beam_audit runs
 mix beam_audit delete RUN_ID          # preview
 mix beam_audit delete RUN_ID --yes    # remove that run
-mix beam_audit prune --older-than 30 --keep 5 --include-partial
-mix beam_audit prune --older-than 30 --keep 5 --include-partial --yes
+mix beam_audit prune --older-than 30 --keep 5
+mix beam_audit prune --older-than 30 --keep 5 --yes
 ```
 
 Prune combines age and count criteria. Partial/unreported runs are protected
 unless `--include-partial` is explicit. Preview first; `--yes` permanently
-removes the selected run records. Active runs and unrecognized entries are
-never selected for removal. No automatic deletion or background service.
+removes the selected run records. Guarded runs and unrecognized entries are
+excluded. No automatic deletion or background service.
 See [Results and recovery](guides/results-and-recovery.md) for details.
 
 ## Analysis
@@ -80,8 +102,8 @@ See [Results and recovery](guides/results-and-recovery.md) for details.
 | VulnCheck | Resolved dependency advisories and optional compiled reachability |
 | Agent Session Manager | Bounded semantic adjudication and challenge review |
 
-Reach paths can independently generate candidates. Public security-sensitive
-boundaries and explicit owner questions can also enter the queue. Native hits,
+Nontrivial Reach paths can independently generate candidates. Public security-sensitive
+boundaries and explicit audit questions can also enter the queue. Native hits,
 context, exclusions, review records, and coverage gaps remain traceable.
 Dependency advisories are deterministic results, not model judgments.
 
@@ -93,7 +115,9 @@ Use the same API from a trusted Mix project that depends on BeamAudit:
 {:ok, run} = BeamAudit.discover(["/path/to/repository"], profile: "full")
 {:ok, summary} = BeamAudit.resume(run.path, max_calls: 12)
 {:ok, report} = BeamAudit.report(summary.path)
-{:ok, changes} = BeamAudit.compare(old_run, summary.path)
+
+# Once an earlier run is available:
+# {:ok, changes} = BeamAudit.compare(old_run, summary.path)
 ```
 
 The report separates source findings from dependency advisory matches. A native
